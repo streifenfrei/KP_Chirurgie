@@ -6,6 +6,12 @@ import glob
 import json
 import os
 import matplotlib.pyplot as plt
+from matplotlib.patches import Rectangle
+from matplotlib import patches,  lines
+
+import random
+import itertools
+import colorsys
 
 # for transforming base64 to image array
 import base64
@@ -28,7 +34,7 @@ class_name_to_id_ = {
 }
 
 
-class OurDataLoader(Dataset):
+class MaskrcnnDataLoader(Dataset):
     def __init__(self, data_dir, transform=None, mode='train', task_type='segmentation',
                  class_name_to_id=class_name_to_id_):
         '''
@@ -54,6 +60,7 @@ class OurDataLoader(Dataset):
     def __getitem__(self, idx):
         '''
         get next image (w/o label)
+        the implementation is basically taken from https://pytorch.org/tutorials/intermediate/torchvision_tutorial.html
         '''
         data_name = self.all_json_name_list[idx]
 
@@ -61,10 +68,7 @@ class OurDataLoader(Dataset):
         if self.task_type == 'segmentation':  # not binary but 4 channels: 4 instruments
             label = load_mask(image.shape, shapes, self.class_name_to_id)
 
-            data = {"image": image, "label": label}
-            # augmented = self.transform(**data)
-
-            ######added code
+            # construction of the boxes (ground truth for region proposal)
             obj_ids = np.unique(label)
             # first id is the background, so remove it
             obj_ids = obj_ids[1:]
@@ -79,10 +83,13 @@ class OurDataLoader(Dataset):
                 ymax = np.max(pos[0])
                 boxes.append([xmin, ymin, xmax, ymax])
 
+            #converting to thensors
             boxes = torch.as_tensor(boxes, dtype=torch.float32)
-            masks = torch.from_numpy(data['label']).long()
+            masks = torch.from_numpy(label).long()
             labels = torch.ones((num_objs,), dtype=torch.int64)
 
+            # creating the dict srtucture for the maskrcnn groundtruth
+            # see https://pytorch.org/docs/stable/torchvision/models.html#mask-r-cnn
             target={}
             target["boxes"] = boxes
             target["labels"] = labels
@@ -91,8 +98,6 @@ class OurDataLoader(Dataset):
 
 
 
-            augmented = data
-            image, mask = augmented["image"], augmented["label"]
             if self.mode == 'train':
                 return img_to_tensor(image), target
             else:
@@ -205,25 +210,30 @@ def load_mask(img_shape, shapes, class_name_to_id):
 
 if __name__ == '__main__':
     test1 = DataLoader(
-        dataset=OurDataLoader(data_dir=r'./dataset/', ),
+        dataset=MaskrcnnDataLoader(data_dir=r'./dataset/', ),
         shuffle=False,
         batch_size=1,
         pin_memory=torch.cuda.is_available()
     )
 
-    # for epoch in range(3):
-    #     for step, (batchX, batchY) in enumerate(test1):
-    #         print('Epoch: ', epoch, '| Step: ', step, '| batch x: ',
-    #               batchX.shape, '| batch y: ', batchY.shape)
 
+    fig = plt.figure(figsize=(8, 8))
+    for step, (batchX, batchY) in enumerate(test1):
+        fig.add_subplot(1, 2, 1)
+        # show the original image
+        plt.imshow(batchX.view(batchX.shape[1], batchX.shape[2], batchX.shape[3]).permute(1, 2, 0))
 
-    # fig = plt.figure(figsize=(8, 8))
-    # for step, (batchX, batchY) in enumerate(test1):
-    #     fig.add_subplot(1, 2, 1)
-    #     plt.imshow(batchX.view(batchX.shape[1], batchX.shape[2], batchX.shape[3]).permute(1, 2, 0))
-    #     # plt.imshow(batchX.view(batchX[0].shape[1], batchX[0].shape[2], batchX[0].shape[3]).permute(1, 2, 0))
-    #     fig.add_subplot(1, 2, 2)
-    #     plt.imshow(batchY.view(batchY.shape[1], batchY.shape[2]).permute(0, 1))
-    #     # plt.imshow(batchY.view(batchY[0].shape[1], batchY[0].shape[2]).permute(0, 1))
-    #     plt.show()
-    #     break
+        # Get the current reference
+        ax = plt.gca()
+        boxes = batchY['boxes']
+        for i in boxes: #TODO found a prettier accessing technique
+            for index, box in enumerate(i):
+                x1, y1, x2, y2 = box.numpy()
+                # drawing the rectangle to show the ground truth for region prorposal
+                plt.gca().add_patch(Rectangle((x1, y1), x2 - x1, y2 - y1, linewidth=2, alpha=0.7,
+                                              linestyle="dashed",edgecolor='r', facecolor='none'))
+        fig.add_subplot(1, 2, 2)
+        # show the mask
+        plt.imshow(batchY['masks'].view(batchY['masks'].shape[1], batchY['masks'].shape[2]).permute(0, 1))
+
+        plt.show()
