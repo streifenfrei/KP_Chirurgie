@@ -208,9 +208,9 @@ if __name__ == '__main__':
     fig=plt.figure(figsize=(8, 8))
     for step, (batchX, batchY) in enumerate(test1):
         fig.add_subplot(1,2,1)
-        plt.imshow(batchX.view(batchX.shape[1], batchX.shape[2], batchX.shape[3]).permute(1, 2, 0))
+        plt.imshow(batchX.view(batchX[0].shape[1], batchX[0].shape[2], batchX[0].shape[3]).permute(1, 2, 0))
         fig.add_subplot(1,2,2)
-        plt.imshow(batchY.view(batchY.shape[1], batchY.shape[2]).permute(0, 1))
+        plt.imshow(batchY.view(batchY[0].shape[1], batchY[0].shape[2]).permute(0, 1))
         plt.show()
         break
     
