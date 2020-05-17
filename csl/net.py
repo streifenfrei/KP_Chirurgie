@@ -26,7 +26,9 @@ class CSLNet(nn.Module):
         down = 3
 
     def __init__(self,
-                 encoder: Encoder = Encoder.resNet50):
+                 encoder: Encoder = Encoder.resNet50,
+                 segmentation_classes=3,
+                 localisation_classes=4):
         super(CSLNet, self).__init__()
         self.inplanes = 64
         self.base_width = 64
@@ -58,6 +60,11 @@ class CSLNet(nn.Module):
         self.inplanes = 256
         self.decoding_layer3_2 = self._make_layer(128, sampling=self._Sampling.none)
         self.decoding_layer4 = self._make_layer(64, sampling=self._Sampling.up)
+
+        self.segmentation_layer = self._make_layer(segmentation_classes, sampling=self._Sampling.up)
+        self.inplanes = 64
+        self.pre_localisation_layer = self._make_layer(32, sampling=self._Sampling.up)
+        self.localisation_layer = self._make_layer(localisation_classes, sampling=self._Sampling.none)
 
     def _make_decoder_block(self, planes):
         return DecoderBlock(self.inplanes, self.inplanes, planes)
@@ -120,6 +127,12 @@ class CSLNet(nn.Module):
         dec3_2 = self.decoding_layer3_2(enc1)
         x += dec3_2
         x = self.decoding_layer4(x)
+
+        # csl part
+        seg = self.segmentation_layer(x)
+        x = self.pre_localisation_layer(x)
+        x = torch.cat((seg, x))
+        x = self.localisation_layer(x)
         return x
 
 
