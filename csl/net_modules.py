@@ -40,13 +40,9 @@ class Bottleneck(nn.Module):
     expansion = 4
 
     def __init__(self, inplanes, planes, downsample=False, groups=1,
-                 base_width=64, dilation=1, norm_layer=nn.BatchNorm2d):
+                 base_width=64, dilation=1, stride=1, norm_layer=nn.BatchNorm2d):
         super(Bottleneck, self).__init__()
         self.downsample = downsample
-        if self.downsample:
-            stride = 2
-        else:
-            stride = 1
         width = int(planes * (base_width / 64.)) * groups
         self.conv1 = conv1x1(inplanes, width)
         self.bn1 = norm_layer(width)
@@ -79,7 +75,7 @@ class Bottleneck(nn.Module):
             identity = nn.Sequential(
                 nn.Conv2d(self.inplanes, self.planes * Bottleneck.expansion,
                           kernel_size=1,
-                          stride=2,
+                          stride=self.stride,
                           bias=False),
                 self.norm_layer(self.planes * Bottleneck.expansion)
             )(x)

@@ -6,17 +6,6 @@ from torch.utils.data import DataLoader
 from csl.net_modules import *
 from dataLoader import OurDataLoader, image_transform
 
-# for image augmentation
-from albumentations import (
-    HorizontalFlip,
-    VerticalFlip,
-    Normalize,
-    Compose,
-    PadIfNeeded,
-    RandomCrop,
-    Resize,
-    CenterCrop
-)
 
 class CSLNet(nn.Module):
     resNetLayers = [
@@ -32,8 +21,9 @@ class CSLNet(nn.Module):
 
     class _Sampling(IntEnum):
         none = 0
-        up = 1
-        down = 2
+        none_bottleneck = 1
+        up = 2
+        down = 3
 
     def __init__(self,
                  encoder: Encoder = Encoder.resNet50):
@@ -51,7 +41,7 @@ class CSLNet(nn.Module):
 
         layers = self.resNetLayers[encoder]
 
-        self.encoding_layer1 = self._make_layer(256, sampling=self._Sampling.down,  bottleneck_blocks=layers[0])
+        self.encoding_layer1 = self._make_layer(256, sampling=self._Sampling.none_bottleneck,  bottleneck_blocks=layers[0])
         self.encoding_layer2 = self._make_layer(512, sampling=self._Sampling.down, bottleneck_blocks=layers[1])
         self.encoding_layer3 = self._make_layer(1024, sampling=self._Sampling.down, bottleneck_blocks=layers[2])
         self.encoding_layer4 = self._make_layer(2048, sampling=self._Sampling.down,  bottleneck_blocks=layers[3])
@@ -69,29 +59,35 @@ class CSLNet(nn.Module):
         self.decoding_layer3_2 = self._make_layer(128, sampling=self._Sampling.none)
         self.decoding_layer4 = self._make_layer(64, sampling=self._Sampling.up)
 
-
     def _make_decoder_block(self, planes):
         return DecoderBlock(self.inplanes, self.inplanes, planes)
 
-    def _make_bottleneck_block(self, planes, downsample=False):
+    def _make_bottleneck_block(self, planes, downsample=False, stride=1):
         return Bottleneck(self.inplanes, planes,
                           downsample=downsample,
                           groups=self.groups,
                           base_width=self.base_width,
                           dilation=self.dilation,
+                          stride=stride,
                           norm_layer=self.norm_layer)
 
     def _make_layer(self, planes, sampling: _Sampling = _Sampling.none, bottleneck_blocks=2):
         layers = []
         if sampling == self._Sampling.down:
             bottleneck_planes = int(planes / Bottleneck.expansion)
-            layers.append(self._make_bottleneck_block(bottleneck_planes, downsample=True))
+            layers.append(self._make_bottleneck_block(bottleneck_planes, downsample=True, stride=2))
             self.inplanes = planes
             for _ in range(1, bottleneck_blocks):
                 layers.append(self._make_bottleneck_block(bottleneck_planes))
         elif sampling == self._Sampling.up:
             layers.append(self._make_decoder_block(planes))
             self.inplanes = planes
+        elif sampling == self._Sampling.none_bottleneck:
+            bottleneck_planes = int(planes / Bottleneck.expansion)
+            layers.append(self._make_bottleneck_block(bottleneck_planes, downsample=True, stride=1))
+            self.inplanes = planes
+            for _ in range(1, bottleneck_blocks):
+                layers.append(self._make_bottleneck_block(bottleneck_planes))
         else:
             layers.append(conv3x3(self.inplanes, planes))
             self.inplanes = planes
@@ -99,18 +95,13 @@ class CSLNet(nn.Module):
         return nn.Sequential(*layers)
 
     def forward(self, x):
-        print("{0}".format(x.shape))
-
         x = self.conv1(x)
         x = self.bn1(x)
         x = self.relu(x)
         x = self.maxpool(x)
-        print("{0}".format(x.shape))
 
         # encoder
         x = enc1 = self.encoding_layer1(x)
-        print("{0}".format(x.shape))
-
         x = enc2 = self.encoding_layer2(x)
         x = enc3 = self.encoding_layer3(x)
         x = self.encoding_layer4(x)
@@ -129,23 +120,12 @@ class CSLNet(nn.Module):
         dec3_2 = self.decoding_layer3_2(enc1)
         x += dec3_2
         x = self.decoding_layer4(x)
-        print("{0}".format(x.shape))
         return x
-
-
-def transform(p=1):
-    return Compose([
-        PadIfNeeded(min_height=100, min_width=100, p=1),
-        RandomCrop(height=100, width=100, p=1),
-        VerticalFlip(p=0.5),
-        HorizontalFlip(p=0.5),
-        Normalize(p=1),
-    ], p=p)
 
 
 if __name__ == '__main__':
     loader = DataLoader(
-        dataset=OurDataLoader(data_dir=r'../dataset', transform=transform(p=1)),
+        dataset=OurDataLoader(data_dir=r'../dataset', transform=image_transform(p=1)),
         shuffle=True,
         batch_size=1,
         pin_memory=torch.cuda.is_available()
