@@ -129,11 +129,37 @@ class CSLNet(nn.Module):
         x = self.decoding_layer4(x)
 
         # csl part
-        seg = self.segmentation_layer(x)
+        segmentation = self.segmentation_layer(x)
         x = self.pre_localisation_layer(x)
-        x = torch.cat((seg, x))
-        x = self.localisation_layer(x)
-        return x
+        x = torch.cat((segmentation, x))
+        localisation = self.localisation_layer(x)
+        return segmentation, localisation
+
+
+def loss_function(output, target):
+    output_segmentation, output_localisation = output
+    target_segmentation, target_localisation = target
+    segmentation_loss = nn.CrossEntropyLoss(output_segmentation, target_segmentation, reduction='mean')
+    # TODO localisation loss... gaussian + mse ?
+    localisation_loss = 0
+    return segmentation_loss + localisation_loss
+
+
+def train(model: CSLNet, train_loader, epochs=20, learning_rate=0.01, device="cpu"):
+    optimizer = torch.optim.Adam(model.parameters(), lr=learning_rate)
+    for epoch in range(epochs):
+        model.train()
+        for batch in train_loader:
+            optimizer.zero_grad()
+            inputs, target = batch
+            inputs = inputs.to(device)
+            target = target.to(device)
+            output = model(inputs)
+            loss = loss_function(output, target)
+            loss.backward()
+            optimizer.step()
+        # TODO validation
+    model.eval()
 
 
 if __name__ == '__main__':
@@ -143,12 +169,9 @@ if __name__ == '__main__':
         batch_size=1,
         pin_memory=torch.cuda.is_available()
     )
+
     model = CSLNet()
-
-    import matplotlib.pyplot as plt
-
-    fig = plt.figure(figsize=(8, 8))
-
     for step, (batchX, batchY) in enumerate(loader):
         if step == 1:
+            print(batchX.shape)
             out = model(batchX)
