@@ -10,16 +10,16 @@ from dataLoader import OurDataLoader, image_transform
 
 
 class CSLNet(nn.Module):
-    resNetLayers = [
+    _res_net_layers = [
         [3, 4, 6, 3],  # 50
         [3, 4, 23, 3],  # 101
         [3, 8, 36, 3]  # 152
     ]
 
     class Encoder(IntEnum):
-        resNet50 = 0
-        resNet101 = 1
-        resNet152 = 2
+        res_net_50 = 0
+        res_net_101 = 1
+        res_net_152 = 2
 
     class _Sampling(IntEnum):
         none = 0
@@ -28,7 +28,7 @@ class CSLNet(nn.Module):
         down = 3
 
     def __init__(self,
-                 encoder: Encoder = Encoder.resNet50,
+                 encoder: Encoder = Encoder.res_net_50,
                  segmentation_classes=3,
                  localisation_classes=4):
         super(CSLNet, self).__init__()
@@ -43,7 +43,7 @@ class CSLNet(nn.Module):
         self.relu = nn.ReLU(inplace=True)
         self.maxpool = nn.MaxPool2d(kernel_size=3, stride=2, padding=1)
 
-        layers = self.resNetLayers[encoder]
+        layers = self._res_net_layers[encoder]
 
         self.encoding_layer1 = self._make_layer(256, sampling=self._Sampling.none_bottleneck,  bottleneck_blocks=layers[0])
         self.encoding_layer2 = self._make_layer(512, sampling=self._Sampling.down, bottleneck_blocks=layers[1])
@@ -138,13 +138,18 @@ class CSLNet(nn.Module):
         return segmentation, localisation
 
 
-def gaussian_function(x, sigma):
-    a = 1 / (sigma * np.sqrt(2 * np.pi))
-    gaussian = np.exp(-(x / (2 * (sigma ** 2))))
-    return a * gaussian
+class GaussianFunction:
+    def __init__(self, sigma):
+        self.sigma = sigma
+        self.a = 1 / (sigma * np.sqrt(2 * np.pi))
+        self.b = (2 * (self.sigma ** 2))
+
+    def __call__(self, x):
+        gaussian = np.exp(-x / self.b)
+        return self.a * gaussian
 
 
-def loss_function(output, target, sigma=5, lambdah=1):
+def loss_function(output, target, gaussian_function: GaussianFunction, lambdah=1):
     output_segmentation, output_localisation = output
     target_segmentation, target_localisation = target
     # segmentation
@@ -156,19 +161,23 @@ def loss_function(output, target, sigma=5, lambdah=1):
     for batch, localisation_class, y, x in np.nditer(target_localisation_array, flags=['multi_index']):
         # TODO retrieve target points
         target_points = [(2, 3), (31, 44)]
-        gaussian_values = []
-        for target_point in target_points:
-            euclidean_distance = distance.euclidean((x, y), target_point)
-            gaussian_values.append(gaussian_function(euclidean_distance, sigma))
-        target_localisation_array[batch, localisation_class, y, x] = max(gaussian_values, default=0)
+        target_value = 0
+        if target_points:
+            distances = []
+            for target_point in target_points:
+                euclidean_distance = distance.euclidean((x, y), target_point)
+                distances.append(euclidean_distance)
+            target_value = gaussian_function(min(distances))
+        target_localisation_array[batch, localisation_class, y, x] = target_value
     target_localisation_tensor = torch.tensor(target_localisation_array)
     localisation_loss_function = nn.MSELoss()
     localisation_loss = localisation_loss_function(output_localisation, target_localisation_tensor)
     return segmentation_loss + (lambdah * localisation_loss)
 
 
-def train(model: CSLNet, train_loader, epochs=20, learning_rate=0.01, device="cpu"):
+def train(model: CSLNet, train_loader, sigma=5, lambdah=1, epochs=20, learning_rate=0.01, device="cpu"):
     optimizer = torch.optim.Adam(model.parameters(), lr=learning_rate)
+    gaussian_function = GaussianFunction(sigma)
     for epoch in range(epochs):
         model.train()
         for batch in train_loader:
@@ -177,7 +186,7 @@ def train(model: CSLNet, train_loader, epochs=20, learning_rate=0.01, device="cp
             inputs = inputs.to(device)
             target = target.to(device)
             output = model(inputs)
-            loss = loss_function(output, target)
+            loss = loss_function(output, target, gaussian_function, lambdah)
             loss.backward()
             optimizer.step()
         # TODO validation
