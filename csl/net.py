@@ -2,6 +2,8 @@ from enum import IntEnum
 
 import torch
 from torch.utils.data import DataLoader
+import numpy as np
+from scipy.spatial import distance
 
 from csl.net_modules import *
 from dataLoader import OurDataLoader, image_transform
@@ -50,19 +52,15 @@ class CSLNet(nn.Module):
 
         self.bottleneck_layer = self._make_layer(1024, sampling=self._Sampling.none)
 
-        self.decoding_layer1_1 = self._make_layer(512, sampling=self._Sampling.up)
-        self.inplanes = 1024
+        self.decoding_layer1_1 = self._make_layer(512, sampling=self._Sampling.up, update_planes=False)
         self.decoding_layer1_2 = self._make_layer(512, sampling=self._Sampling.none)
-        self.decoding_layer2_1 = self._make_layer(256, sampling=self._Sampling.up)
-        self.inplanes = 512
+        self.decoding_layer2_1 = self._make_layer(256, sampling=self._Sampling.up, update_planes=False)
         self.decoding_layer2_2 = self._make_layer(256, sampling=self._Sampling.none)
-        self.decoding_layer3_1 = self._make_layer(128, sampling=self._Sampling.up)
-        self.inplanes = 256
+        self.decoding_layer3_1 = self._make_layer(128, sampling=self._Sampling.up, update_planes=False)
         self.decoding_layer3_2 = self._make_layer(128, sampling=self._Sampling.none)
         self.decoding_layer4 = self._make_layer(64, sampling=self._Sampling.up)
 
-        self.segmentation_layer = self._make_layer(segmentation_classes, sampling=self._Sampling.up)
-        self.inplanes = 64
+        self.segmentation_layer = self._make_layer(segmentation_classes, sampling=self._Sampling.up, update_planes=False)
         self.pre_localisation_layer = self._make_layer(32, sampling=self._Sampling.up)
         self.localisation_layer = self._make_layer(localisation_classes, sampling=self._Sampling.none)
 
@@ -78,8 +76,9 @@ class CSLNet(nn.Module):
                           stride=stride,
                           norm_layer=self.norm_layer)
 
-    def _make_layer(self, planes, sampling: _Sampling = _Sampling.none, bottleneck_blocks=2):
+    def _make_layer(self, planes, sampling: _Sampling = _Sampling.none, bottleneck_blocks=2, update_planes=True):
         layers = []
+        old_inplanes = self.inplanes
         if sampling == self._Sampling.down:
             bottleneck_planes = int(planes / Bottleneck.expansion)
             layers.append(self._make_bottleneck_block(bottleneck_planes, downsample=True, stride=2))
@@ -98,6 +97,9 @@ class CSLNet(nn.Module):
         else:
             layers.append(conv3x3(self.inplanes, planes))
             self.inplanes = planes
+
+        if not update_planes:
+            self.inplanes = old_inplanes
 
         return nn.Sequential(*layers)
 
@@ -136,13 +138,33 @@ class CSLNet(nn.Module):
         return segmentation, localisation
 
 
-def loss_function(output, target):
+def gaussian_function(x, sigma):
+    a = 1 / (sigma * np.sqrt(2 * np.pi))
+    gaussian = np.exp(-(x / (2 * (sigma ** 2))))
+    return a * gaussian
+
+
+def loss_function(output, target, sigma=5, lambdah=1):
     output_segmentation, output_localisation = output
     target_segmentation, target_localisation = target
-    segmentation_loss = nn.CrossEntropyLoss(output_segmentation, target_segmentation, reduction='mean')
-    # TODO localisation loss... gaussian + mse ?
-    localisation_loss = 0
-    return segmentation_loss + localisation_loss
+    # segmentation
+    segmentation_loss_function = nn.CrossEntropyLoss()
+    segmentation_loss = segmentation_loss_function(output_segmentation, target_segmentation)
+    # localization
+    batch_size, localisation_classes, height, width = list(output_localisation.shape)
+    target_localisation_array = np.zeros([batch_size, localisation_classes, height, width])
+    for batch, localisation_class, y, x in np.nditer(target_localisation_array, flags=['multi_index']):
+        # TODO retrieve target points
+        target_points = [(2, 3), (31, 44)]
+        gaussian_values = []
+        for target_point in target_points:
+            euclidean_distance = distance.euclidean((x, y), target_point)
+            gaussian_values.append(gaussian_function(euclidean_distance, sigma))
+        target_localisation_array[batch, localisation_class, y, x] = max(gaussian_values, default=0)
+    target_localisation_tensor = torch.tensor(target_localisation_array)
+    localisation_loss_function = nn.MSELoss()
+    localisation_loss = localisation_loss_function(output_localisation, target_localisation_tensor)
+    return segmentation_loss + (lambdah * localisation_loss)
 
 
 def train(model: CSLNet, train_loader, epochs=20, learning_rate=0.01, device="cpu"):
