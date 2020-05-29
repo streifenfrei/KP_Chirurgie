@@ -1,3 +1,4 @@
+import os
 from enum import IntEnum
 
 import torch
@@ -174,7 +175,4 @@ if __name__ == '__main__':
     )
 
     model = CSLNet()
-    for step, (batchX, batchY) in enumerate(loader):
-        if step == 1:
-            print(batchX.shape)
-            out = model(batchX)
+    model.load_state_dict(torch.load(os.path.abspath("weights/resnet50-19c8e357.pth")), strict=False)
