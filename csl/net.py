@@ -2,8 +2,6 @@ from enum import IntEnum
 
 import torch
 from torch.utils.data import DataLoader
-import numpy as np
-from scipy.spatial import distance
 
 from csl.net_modules import *
 from dataLoader import OurDataLoader, image_transform
@@ -138,46 +136,20 @@ class CSLNet(nn.Module):
         return segmentation, localisation
 
 
-class GaussianFunction:
-    def __init__(self, sigma):
-        self.sigma = sigma
-        self.a = 1 / (sigma * np.sqrt(2 * np.pi))
-        self.b = (2 * (self.sigma ** 2))
-
-    def __call__(self, x):
-        gaussian = np.exp(-x / self.b)
-        return self.a * gaussian
-
-
-def loss_function(output, target, gaussian_function: GaussianFunction, lambdah=1):
+def loss_function(output, target, lambdah=1):
     output_segmentation, output_localisation = output
     target_segmentation, target_localisation = target
     # segmentation
     segmentation_loss_function = nn.CrossEntropyLoss()
     segmentation_loss = segmentation_loss_function(output_segmentation, target_segmentation)
     # localization
-    batch_size, localisation_classes, height, width = list(output_localisation.shape)
-    target_localisation_array = np.zeros([batch_size, localisation_classes, height, width])
-    for batch, localisation_class, y, x in np.nditer(target_localisation_array, flags=['multi_index']):
-        # TODO retrieve target points
-        target_points = [(2, 3), (31, 44)]
-        target_value = 0
-        if target_points:
-            distances = []
-            for target_point in target_points:
-                euclidean_distance = distance.euclidean((x, y), target_point)
-                distances.append(euclidean_distance)
-            target_value = gaussian_function(min(distances))
-        target_localisation_array[batch, localisation_class, y, x] = target_value
-    target_localisation_tensor = torch.tensor(target_localisation_array)
     localisation_loss_function = nn.MSELoss()
-    localisation_loss = localisation_loss_function(output_localisation, target_localisation_tensor)
+    localisation_loss = localisation_loss_function(output_localisation, target_localisation)
     return segmentation_loss + (lambdah * localisation_loss)
 
 
-def train(model: CSLNet, train_loader, sigma=5, lambdah=1, epochs=20, learning_rate=0.01, device="cpu"):
+def train(model: CSLNet, train_loader, lambdah=1, epochs=20, learning_rate=0.01, device="cpu"):
     optimizer = torch.optim.Adam(model.parameters(), lr=learning_rate)
-    gaussian_function = GaussianFunction(sigma)
     for epoch in range(epochs):
         model.train()
         for batch in train_loader:
@@ -186,7 +158,7 @@ def train(model: CSLNet, train_loader, sigma=5, lambdah=1, epochs=20, learning_r
             inputs = inputs.to(device)
             target = target.to(device)
             output = model(inputs)
-            loss = loss_function(output, target, gaussian_function, lambdah)
+            loss = loss_function(output, target, lambdah)
             loss.backward()
             optimizer.step()
         # TODO validation
