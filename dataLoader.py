@@ -100,8 +100,8 @@ class OurDataLoader(Dataset):
         # TODO: how to deal with this part?
         elif self.task_type == 'both':
             mask = load_both(image.shape, shapes, self.class_name_to_id, self.landmark_name_to_id, self.pose_sigma)
-            print(image.shape)
-            print(mask.shape)
+            #print(image.shape)
+            #print(mask.shape)
             data = {"image": image, "mask": mask}
             augmented = self.transform(**data)
             
@@ -243,15 +243,14 @@ def max_gaussian_help(cls, pose_sigma, landmark_id):
 
     seg_image = np.zeros_like(cls, dtype = float)
     seg_image = np.reshape(seg_image, (seg_image.shape[0], seg_image.shape[1],1))
+    
     seg_image_temp = np.zeros_like(seg_image, dtype = float)
     for every_point in non_zero_coords:
         seg_image_zeros = np.zeros_like(seg_image_temp, dtype = float)
         seg_image_zeros[every_point[0], every_point[1],0] = 1.0 
         seg_image_zeros = gaussian_filter(seg_image_zeros, sigma = pose_sigma)
-        #print(seg_image_zeros.shape)
         seg_image = np.dstack((seg_image,seg_image_zeros))
-    #print(seg_image.shape)
-    #print("=============")    
+        
     seg_image = np.max(seg_image, axis = 2)
     
     seg_image = np.reshape(seg_image, (seg_image.shape[0], seg_image.shape[1], 1))
@@ -266,34 +265,10 @@ def load_pose(img_shape, shapes, landmark_name_to_id, pose_sigma):
                 task_type = 'pose'
             )
     seg_image = max_gaussian_help(cls, pose_sigma, 1)
-    #seg_image[cls == 1] = 1 #first channel: jaw
-    #non_zero_coords = np.transpose(np.where(cls == 1))
-    #seg_image_temp = seg_image[:].reshape(seg_image.shape[0], seg_image.shape[1]),1)
-    #seg_image_zeros = np.zeros_like(ins, dtype = float)
-    #for every_point in non_zero_coords:
-    #    seg_image_zeros[every_point[0], every_point[1]] = 1.0 
-    #    seg_image_zeros = gaussian_filter(seg_image_zeros, sigma = pose_sigma)
-    #    seg_image_temp = np.dstack((seg_image_temp,seg_image_zeros))
-    
-    #seg_image = np.max(seg_image_temp, axis = 2)
-    
-    #seg_image = gaussian_filter(seg_image, sigma = pose_sigma)
-    
-    #if seg_image.max() > 0:
-    #    seg_image *= (1.0/seg_image.max())
-        
-    #seg_image = np.reshape(seg_image,(seg_image.shape[0], seg_image.shape[1], 1))
+
     for each_class in landmark_name_to_id:
         if each_class != 'jaw':
-            seg_image_cls = np.zeros_like(ins, dtype = float)
             seg_image_cls = max_gaussian_help(cls, pose_sigma, landmark_name_to_id[each_class])
-            #seg_image_cls[cls == landmark_name_to_id[each_class]] = 1
-            #apply gaussian filter:
-            #seg_image_cls = gaussian_filter(seg_image_cls, sigma = pose_sigma)
-            #normalization? ==> not now
-            #if seg_image_cls.max() > 0:
-            #    seg_image_cls *= (1.0/seg_image_cls.max())
-            #seg_image_cls = np.reshape(seg_image_cls,(seg_image_cls.shape[0], seg_image_cls.shape[1]),1)
             seg_image = np.dstack((seg_image,seg_image_cls))
     return seg_image
     
@@ -315,6 +290,7 @@ def load_both(img_shape, shapes, class_name_to_id, landmark_name_to_id, pose_sig
     
     seg_image[cls_seg == 1] = 1 #first channel: grapser
     seg_image = np.reshape(seg_image,(seg_image.shape[0], seg_image.shape[1], 1))
+    
     for each_class in class_name_to_id:
         if each_class != 'grasper':
             seg_image_cls = np.zeros_like(ins_seg)
@@ -323,12 +299,8 @@ def load_both(img_shape, shapes, class_name_to_id, landmark_name_to_id, pose_sig
             seg_image = np.dstack((seg_image,seg_image_cls))
 
     for each_class in landmark_name_to_id:
-        seg_image_cls = np.zeros_like(ins_pose, dtype = float)
-        seg_image_cls[cls_pose == landmark_name_to_id[each_class]] = 1.0
-        #gaussian
-        seg_image_cls = gaussian_filter(seg_image_cls, sigma = pose_sigma)
-
-        seg_image_cls = np.reshape(seg_image_cls,(seg_image_cls.shape[0], seg_image_cls.shape[1], 1))
+        seg_image_cls = max_gaussian_help(cls_pose, pose_sigma, landmark_name_to_id[each_class])
+        #print(seg_image_cls.shape)
         seg_image = np.dstack((seg_image,seg_image_cls))
 
     return seg_image 
@@ -338,7 +310,7 @@ def load_both(img_shape, shapes, class_name_to_id, landmark_name_to_id, pose_sig
     
 if __name__ == '__main__':
     test1 = DataLoader(
-            dataset=OurDataLoader(data_dir=r'dataset', task_type = 'pose', transform=image_transform(p=1)),
+            dataset=OurDataLoader(data_dir=r'dataset', task_type = 'both', transform=image_transform(p=1), pose_sigma = 5),
             shuffle=True,
             batch_size=2,
             pin_memory=torch.cuda.is_available()
@@ -352,7 +324,7 @@ if __name__ == '__main__':
     import matplotlib.pyplot as plt
     fig=plt.figure(figsize=(12, 6))
     for step, (batchX, batchY) in enumerate(test1):
-        '''
+        
         fig.add_subplot(2,4,1)
         plt.imshow(batchX[0].view(batchX[0].shape[0], batchX[0].shape[1], batchX[0].shape[2]).permute(1, 2, 0))
 
@@ -361,18 +333,12 @@ if __name__ == '__main__':
         fig.add_subplot(2,4,3)
         plt.imshow(batchY[0,:,:,1].view(batchY[0].shape[0], batchY[0].shape[1]))
         
-        
         fig.add_subplot(2,4,4)
         plt.imshow(batchY[0,:,:,2].view(batchY[0].shape[0], batchY[0].shape[1]))
 
         fig.add_subplot(2,4,5)
         plt.imshow(batchY[0,:,:,3].view(batchY[0].shape[0], batchY[0].shape[1]))
-        non_zero_coords =  np.transpose(np.nonzero(batchY[0,:,:,3].view(batchY[0].shape[0], batchY[0].shape[1]).numpy()))
-        print(non_zero_coords)
-        for xy in non_zero_coords:
-            print(xy[0],xy[1])
-            print(batchY[0,:,:,3].numpy()[xy[0],xy[1]])
-
+   
         fig.add_subplot(2,4,6)
         plt.imshow(batchY[0,:,:,4].view(batchY[0].shape[0], batchY[0].shape[1]))
         fig.add_subplot(2,4,7)
@@ -398,6 +364,6 @@ if __name__ == '__main__':
         
         fig.add_subplot(2,3,4)
         plt.imshow(batchY[0,:,:,2].view(batchY[0].shape[0], batchY[0].shape[1]))        
-        
+        '''
         plt.show()
         break
