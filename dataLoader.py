@@ -4,6 +4,7 @@ from torch.utils.data import Dataset
 from albumentations.pytorch.transforms import img_to_tensor
 import glob
 import json
+from scipy.ndimage.filters import gaussian_filter
 
 # for image augmentation
 from albumentations import (
@@ -14,6 +15,7 @@ from albumentations import (
     PadIfNeeded,
     RandomCrop,
     CenterCrop
+    
 )
 
 # for transforming base64 to image array
@@ -41,7 +43,7 @@ landmark_name_to_id_ = {
 }
 
 class OurDataLoader(Dataset):
-    def __init__(self, data_dir, transform=None, mode='train', task_type='both', class_name_to_id = class_name_to_id_, landmark_name_to_id = landmark_name_to_id_): 
+    def __init__(self, data_dir, transform=None, mode='train', task_type='both', class_name_to_id = class_name_to_id_, landmark_name_to_id = landmark_name_to_id_, pose_sigma = 7): 
         '''
         constructor of OurDataLoader
         @ param:
@@ -56,6 +58,7 @@ class OurDataLoader(Dataset):
         self.task_type = task_type
         self.class_name_to_id = class_name_to_id
         self.landmark_name_to_id = landmark_name_to_id
+        self.pose_sigma = pose_sigma
 
     def __len__(self):
         '''
@@ -71,12 +74,11 @@ class OurDataLoader(Dataset):
 
         image, shapes = load_image(data_name)
         if self.task_type == 'segmentation':  # not binary but 4 channels: 4 instruments
-            label = load_mask(image.shape, shapes, self.class_name_to_id)
+            mask = load_mask(image.shape, shapes, self.class_name_to_id)
 
-            data = {"image": image, "label": label}
-            # augmented = self.transform(**data)
-            augmented = data
-            image, mask = augmented["image"], augmented["label"]
+            data = {"image": image, "mask": mask}
+            augmented = self.transform(**data)
+            image, mask = augmented["image"], augmented["mask"]
             if self.mode == 'train':
                 return img_to_tensor(image), torch.from_numpy(mask).long()
             else:
@@ -84,29 +86,30 @@ class OurDataLoader(Dataset):
                 
                 
         elif self.task_type == 'pose':
-            label = load_pose(image.shape, shapes, self.landmark_name_to_id)
-            data = {"image": image, "label": label}
+            mask = load_pose(image.shape, shapes, self.landmark_name_to_id, self.pose_sigma)
+            data = {"image": image, "mask": mask}
             # TODO: test if works or not with pose information
-            # augmented = self.transform(**data)
-            augmented = data
-            image, pose = augmented["image"], augmented["label"]
-            
+            augmented = self.transform(**data)
+            image, pose = augmented["image"], augmented["mask"]
+
             if self.mode == 'train':
-                return img_to_tensor(image), torch.from_numpy(pose).long()
+                return img_to_tensor(image), torch.from_numpy(pose).float()
             else:
                 return img_to_tensor(image), str(img_file_name)
                 
         # TODO: how to deal with this part?
         elif self.task_type == 'both':
-            label = load_both(image.shape, shapes, self.class_name_to_id, self.landmark_name_to_id)
-            data = {"image": image, "label": label}
-            # TODO: test if works or not with pose information
-            #augmented = self.transform(**data)
-            augmented = data
-            image, both_labels = augmented["image"], augmented["label"]
+            mask = load_both(image.shape, shapes, self.class_name_to_id, self.landmark_name_to_id, self.pose_sigma)
+            print(image.shape)
+            print(mask.shape)
+            data = {"image": image, "mask": mask}
+            augmented = self.transform(**data)
             
+            image, both_labels = augmented["image"], augmented["mask"]
+            #both_labels = mask_transform(both_labels)
+
             if self.mode == 'train':
-                return img_to_tensor(image), torch.from_numpy(both_labels).long()
+                return img_to_tensor(image), torch.from_numpy(both_labels).float()
             else:
                 return img_to_tensor(image), str(img_file_name)
             
@@ -122,13 +125,13 @@ def find_all_json(json_dir):
 
 def image_transform(p=1):
     return Compose([
-        PadIfNeeded(min_height=100, min_width=100, p=1),
-        RandomCrop(height=100, width=100, p=1),
+        PadIfNeeded(min_height=100, min_width=100, p=0.5),
+        RandomCrop(height=512, width=960, p=1),
         VerticalFlip(p=0.5),
         HorizontalFlip(p=0.5),
-        Normalize(p=1)
+        #RandomAffine(30)
     ], p=p)
-
+    
 
 def img_b64_to_arr(img_b64):
     '''
@@ -172,8 +175,8 @@ def point_to_mask(img_shape, points, shape_type=None,
     xy = [tuple(point) for point in points]
     assert len(xy) == 1, 'Shape of shape_type=point must have 1 points'
     cx, cy = xy[0]
-    r = point_size
-    draw.ellipse([cx - r, cy - r, cx + r, cy + r], outline=1, fill=1)   
+    #r = point_size
+    draw.point([cx , cy], fill=1)   #only draw 1 pixel
     mask = np.array(mask, dtype=bool)
     return mask  
  
@@ -226,35 +229,75 @@ def load_mask(img_shape, shapes, class_name_to_id):
     seg_image = np.zeros_like(ins) 
     
     seg_image[cls == 1] = 1 #first channel: grapser
-    seg_image = np.reshape(seg_image,(1, seg_image.shape[0], seg_image.shape[1]))
+    seg_image = np.reshape(seg_image,(seg_image.shape[0], seg_image.shape[1], 1))
     for each_class in class_name_to_id:
         if each_class != 'grasper':
             seg_image_cls = np.zeros_like(ins)
             seg_image_cls[cls == class_name_to_id[each_class]] = 1
             seg_image_cls = np.reshape(seg_image_cls,(1, seg_image_cls.shape[0], seg_image_cls.shape[1]))
-            seg_image = np.vstack((seg_image,seg_image_cls))
+            seg_image = np.dstack((seg_image,seg_image_cls))
     return seg_image
 
+def max_gaussian_help(cls, pose_sigma, landmark_id):    
+    non_zero_coords =  np.transpose(np.where(cls == landmark_id))
 
-def load_pose(img_shape, shapes, landmark_name_to_id):
+    seg_image = np.zeros_like(cls, dtype = float)
+    seg_image = np.reshape(seg_image, (seg_image.shape[0], seg_image.shape[1],1))
+    seg_image_temp = np.zeros_like(seg_image, dtype = float)
+    for every_point in non_zero_coords:
+        seg_image_zeros = np.zeros_like(seg_image_temp, dtype = float)
+        seg_image_zeros[every_point[0], every_point[1],0] = 1.0 
+        seg_image_zeros = gaussian_filter(seg_image_zeros, sigma = pose_sigma)
+        #print(seg_image_zeros.shape)
+        seg_image = np.dstack((seg_image,seg_image_zeros))
+    #print(seg_image.shape)
+    #print("=============")    
+    seg_image = np.max(seg_image, axis = 2)
+    
+    seg_image = np.reshape(seg_image, (seg_image.shape[0], seg_image.shape[1], 1))
+
+    return seg_image
+    
+def load_pose(img_shape, shapes, landmark_name_to_id, pose_sigma):
     cls, ins = shapes_to_label(
                 img_shape=img_shape,
                 shapes=shapes,
                 label_name_to_value=landmark_name_to_id,
                 task_type = 'pose'
             )
-    seg_image = np.zeros_like(ins)
-    seg_image[cls == 1] = 1 #first channel: jaw
-    seg_image = np.reshape(seg_image,(1, seg_image.shape[0], seg_image.shape[1]))
+    seg_image = max_gaussian_help(cls, pose_sigma, 1)
+    #seg_image[cls == 1] = 1 #first channel: jaw
+    #non_zero_coords = np.transpose(np.where(cls == 1))
+    #seg_image_temp = seg_image[:].reshape(seg_image.shape[0], seg_image.shape[1]),1)
+    #seg_image_zeros = np.zeros_like(ins, dtype = float)
+    #for every_point in non_zero_coords:
+    #    seg_image_zeros[every_point[0], every_point[1]] = 1.0 
+    #    seg_image_zeros = gaussian_filter(seg_image_zeros, sigma = pose_sigma)
+    #    seg_image_temp = np.dstack((seg_image_temp,seg_image_zeros))
+    
+    #seg_image = np.max(seg_image_temp, axis = 2)
+    
+    #seg_image = gaussian_filter(seg_image, sigma = pose_sigma)
+    
+    #if seg_image.max() > 0:
+    #    seg_image *= (1.0/seg_image.max())
+        
+    #seg_image = np.reshape(seg_image,(seg_image.shape[0], seg_image.shape[1], 1))
     for each_class in landmark_name_to_id:
         if each_class != 'jaw':
-            seg_image_cls = np.zeros_like(ins)
-            seg_image_cls[cls == landmark_name_to_id[each_class]] = 1
-            seg_image_cls = np.reshape(seg_image_cls,(1, seg_image_cls.shape[0], seg_image_cls.shape[1]))
-            seg_image = np.vstack((seg_image,seg_image_cls))
+            seg_image_cls = np.zeros_like(ins, dtype = float)
+            seg_image_cls = max_gaussian_help(cls, pose_sigma, landmark_name_to_id[each_class])
+            #seg_image_cls[cls == landmark_name_to_id[each_class]] = 1
+            #apply gaussian filter:
+            #seg_image_cls = gaussian_filter(seg_image_cls, sigma = pose_sigma)
+            #normalization? ==> not now
+            #if seg_image_cls.max() > 0:
+            #    seg_image_cls *= (1.0/seg_image_cls.max())
+            #seg_image_cls = np.reshape(seg_image_cls,(seg_image_cls.shape[0], seg_image_cls.shape[1]),1)
+            seg_image = np.dstack((seg_image,seg_image_cls))
     return seg_image
     
-def load_both(img_shape, shapes, class_name_to_id, landmark_name_to_id):
+def load_both(img_shape, shapes, class_name_to_id, landmark_name_to_id, pose_sigma):
 
     cls_seg, ins_seg = shapes_to_label(
                 img_shape=img_shape,
@@ -268,34 +311,40 @@ def load_both(img_shape, shapes, class_name_to_id, landmark_name_to_id):
                 label_name_to_value=landmark_name_to_id,
                 task_type = 'pose'
             )
-    seg_image = np.zeros_like(ins_seg)
+    seg_image = np.zeros_like(ins_seg, dtype = float)
     
     seg_image[cls_seg == 1] = 1 #first channel: grapser
-    seg_image = np.reshape(seg_image,(1, seg_image.shape[0], seg_image.shape[1]))
+    seg_image = np.reshape(seg_image,(seg_image.shape[0], seg_image.shape[1], 1))
     for each_class in class_name_to_id:
         if each_class != 'grasper':
             seg_image_cls = np.zeros_like(ins_seg)
             seg_image_cls[cls_seg == class_name_to_id[each_class]] = 1
-            seg_image_cls = np.reshape(seg_image_cls,(1, seg_image_cls.shape[0], seg_image_cls.shape[1]))
-            seg_image = np.vstack((seg_image,seg_image_cls))
+            seg_image_cls = np.reshape(seg_image_cls,(seg_image_cls.shape[0], seg_image_cls.shape[1], 1))
+            seg_image = np.dstack((seg_image,seg_image_cls))
 
     for each_class in landmark_name_to_id:
-        seg_image_cls = np.zeros_like(ins_pose)
-        seg_image_cls[cls_pose == landmark_name_to_id[each_class]] = 1
-        seg_image_cls = np.reshape(seg_image_cls,(1, seg_image_cls.shape[0], seg_image_cls.shape[1]))
-        seg_image = np.vstack((seg_image,seg_image_cls))
+        seg_image_cls = np.zeros_like(ins_pose, dtype = float)
+        seg_image_cls[cls_pose == landmark_name_to_id[each_class]] = 1.0
+        #gaussian
+        seg_image_cls = gaussian_filter(seg_image_cls, sigma = pose_sigma)
+
+        seg_image_cls = np.reshape(seg_image_cls,(seg_image_cls.shape[0], seg_image_cls.shape[1], 1))
+        seg_image = np.dstack((seg_image,seg_image_cls))
 
     return seg_image 
+
+
+
     
 if __name__ == '__main__':
     test1 = DataLoader(
-            dataset=OurDataLoader(data_dir=r'dataset', transform=image_transform(p=1)),
+            dataset=OurDataLoader(data_dir=r'dataset', task_type = 'pose', transform=image_transform(p=1)),
             shuffle=True,
             batch_size=2,
             pin_memory=torch.cuda.is_available()
         )
 
-    for epoch in range(3):
+    for epoch in range(2):
         for step, (batchX, batchY) in enumerate(test1):
             print('Epoch: ', epoch, '| Step: ', step, '| batch x: ',
                   batchX.shape, '| batch y: ', batchY.shape)
@@ -303,22 +352,52 @@ if __name__ == '__main__':
     import matplotlib.pyplot as plt
     fig=plt.figure(figsize=(12, 6))
     for step, (batchX, batchY) in enumerate(test1):
+        '''
         fig.add_subplot(2,4,1)
         plt.imshow(batchX[0].view(batchX[0].shape[0], batchX[0].shape[1], batchX[0].shape[2]).permute(1, 2, 0))
-        fig.add_subplot(2,4,2)
-        plt.imshow(batchY[0,0,:,:].view(batchY[0].shape[1], batchY[0].shape[2]).permute(0, 1))
-        fig.add_subplot(2,4,3)
-        plt.imshow(batchY[0,1,:,:].view(batchY[0].shape[1], batchY[0].shape[2]).permute(0, 1))
-        fig.add_subplot(2,4,4)
-        plt.imshow(batchY[0,2,:,:].view(batchY[0].shape[1], batchY[0].shape[2]).permute(0, 1))
-        fig.add_subplot(2,4,5)
-        plt.imshow(batchY[0,3,:,:].view(batchY[0].shape[1], batchY[0].shape[2]).permute(0, 1))
-        fig.add_subplot(2,4,6)
-        plt.imshow(batchY[0,4,:,:].view(batchY[0].shape[1], batchY[0].shape[2]).permute(0, 1))
-        fig.add_subplot(2,4,7)
-        plt.imshow(batchY[0,5,:,:].view(batchY[0].shape[1], batchY[0].shape[2]).permute(0, 1))
-        fig.add_subplot(2,4,8)
-        plt.imshow(batchY[0,6,:,:].view(batchY[0].shape[1], batchY[0].shape[2]).permute(0, 1))
 
+        fig.add_subplot(2,4,2)
+        plt.imshow(batchY[0,:,:,0].view(batchY[0].shape[0], batchY[0].shape[1]))
+        fig.add_subplot(2,4,3)
+        plt.imshow(batchY[0,:,:,1].view(batchY[0].shape[0], batchY[0].shape[1]))
+        
+        
+        fig.add_subplot(2,4,4)
+        plt.imshow(batchY[0,:,:,2].view(batchY[0].shape[0], batchY[0].shape[1]))
+
+        fig.add_subplot(2,4,5)
+        plt.imshow(batchY[0,:,:,3].view(batchY[0].shape[0], batchY[0].shape[1]))
+        non_zero_coords =  np.transpose(np.nonzero(batchY[0,:,:,3].view(batchY[0].shape[0], batchY[0].shape[1]).numpy()))
+        print(non_zero_coords)
+        for xy in non_zero_coords:
+            print(xy[0],xy[1])
+            print(batchY[0,:,:,3].numpy()[xy[0],xy[1]])
+
+        fig.add_subplot(2,4,6)
+        plt.imshow(batchY[0,:,:,4].view(batchY[0].shape[0], batchY[0].shape[1]))
+        fig.add_subplot(2,4,7)
+        plt.imshow(batchY[0,:,:,5].view(batchY[0].shape[0], batchY[0].shape[1]))
+        fig.add_subplot(2,4,8)
+        plt.imshow(batchY[0,:,:,6].view(batchY[0].shape[0], batchY[0].shape[1]))
+        '''
+        fig.add_subplot(2,3,1)
+        plt.imshow(batchX[0].view(batchX[0].shape[0], batchX[0].shape[1], batchX[0].shape[2]).permute(1, 2, 0))
+
+        fig.add_subplot(2,3,2)
+        plt.imshow(batchY[0,:,:,0].view(batchY[0].shape[0], batchY[0].shape[1]))
+        non_zero_coords =  np.transpose(np.nonzero(batchY[0,:,:,0].view(batchY[0].shape[0], batchY[0].shape[1]).numpy()))
+        #print(non_zero_coords)
+        #for xy in non_zero_coords:
+        #    print(xy[0],xy[1])
+        #    print(batchY[0,:,:,0].numpy()[xy[0],xy[1]])
+        #print("====================")
+        print(np.max(batchY[0,:,:,0].view(batchY[0].shape[0], batchY[0].shape[1]).numpy()))
+        fig.add_subplot(2,3,3)
+        plt.imshow(batchY[0,:,:,1].view(batchY[0].shape[0], batchY[0].shape[1]))
+        
+        
+        fig.add_subplot(2,3,4)
+        plt.imshow(batchY[0,:,:,2].view(batchY[0].shape[0], batchY[0].shape[1]))        
+        
         plt.show()
         break
