@@ -5,6 +5,8 @@ from albumentations.pytorch.transforms import img_to_tensor
 import glob
 import json
 from scipy.ndimage.filters import gaussian_filter
+from torch.utils.data.sampler import SubsetRandomSampler
+
 
 # for image augmentation
 from albumentations import (
@@ -43,7 +45,7 @@ landmark_name_to_id_ = {
 }
 
 class OurDataLoader(Dataset):
-    def __init__(self, data_dir, transform=None, mode='train', task_type='both', class_name_to_id = class_name_to_id_, landmark_name_to_id = landmark_name_to_id_, pose_sigma = 7): 
+    def __init__(self, data_dir, transform=None, mode='train', task_type='both', class_name_to_id = class_name_to_id_, landmark_name_to_id = landmark_name_to_id_, pose_sigma = 7, normalize_heatmap = True): 
         '''
         constructor of OurDataLoader
         @ param:
@@ -59,7 +61,8 @@ class OurDataLoader(Dataset):
         self.class_name_to_id = class_name_to_id
         self.landmark_name_to_id = landmark_name_to_id
         self.pose_sigma = pose_sigma
-
+        self.normalize_heatmap = normalize_heatmap
+        
     def __len__(self):
         '''
         return size of dataset
@@ -86,7 +89,7 @@ class OurDataLoader(Dataset):
                 
                 
         elif self.task_type == 'pose':
-            mask = load_pose(image.shape, shapes, self.landmark_name_to_id, self.pose_sigma)
+            mask = load_pose(image.shape, shapes, self.landmark_name_to_id, self.pose_sigma, self.normalize_heatmap)
             data = {"image": image, "mask": mask}
             # TODO: test if works or not with pose information
             augmented = self.transform(**data)
@@ -99,7 +102,7 @@ class OurDataLoader(Dataset):
                 
         # TODO: how to deal with this part?
         elif self.task_type == 'both':
-            mask = load_both(image.shape, shapes, self.class_name_to_id, self.landmark_name_to_id, self.pose_sigma)
+            mask = load_both(image.shape, shapes, self.class_name_to_id, self.landmark_name_to_id, self.pose_sigma, self.normalize_heatmap)
             #print(image.shape)
             #print(mask.shape)
             data = {"image": image, "mask": mask}
@@ -257,7 +260,7 @@ def max_gaussian_help(cls, pose_sigma, landmark_id):
 
     return seg_image
     
-def load_pose(img_shape, shapes, landmark_name_to_id, pose_sigma):
+def load_pose(img_shape, shapes, landmark_name_to_id, pose_sigma, normalize_heatmap):
     cls, ins = shapes_to_label(
                 img_shape=img_shape,
                 shapes=shapes,
@@ -265,14 +268,15 @@ def load_pose(img_shape, shapes, landmark_name_to_id, pose_sigma):
                 task_type = 'pose'
             )
     seg_image = max_gaussian_help(cls, pose_sigma, 1)
-
     for each_class in landmark_name_to_id:
         if each_class != 'jaw':
             seg_image_cls = max_gaussian_help(cls, pose_sigma, landmark_name_to_id[each_class])
             seg_image = np.dstack((seg_image,seg_image_cls))
+    if normalize_heatmap == True:
+        seg_image = seg_image * np.sqrt(2 * np.pi) * pose_sigma
     return seg_image
     
-def load_both(img_shape, shapes, class_name_to_id, landmark_name_to_id, pose_sigma):
+def load_both(img_shape, shapes, class_name_to_id, landmark_name_to_id, pose_sigma, normalize_heatmap):
 
     cls_seg, ins_seg = shapes_to_label(
                 img_shape=img_shape,
@@ -300,22 +304,93 @@ def load_both(img_shape, shapes, class_name_to_id, landmark_name_to_id, pose_sig
 
     for each_class in landmark_name_to_id:
         seg_image_cls = max_gaussian_help(cls_pose, pose_sigma, landmark_name_to_id[each_class])
+        if normalize_heatmap == True:
+            seg_image_cls = seg_image_cls * np.sqrt(2 * np.pi) * pose_sigma
         #print(seg_image_cls.shape)
         seg_image = np.dstack((seg_image,seg_image_cls))
-
     return seg_image 
 
+def train_val_dataset(dataset, validation_split = 0.2, train_batch_size = 16, valid_batch_size = 16, shuffle_dataset = True):
 
+    random_seed= 42
+    # Creating data indices for training and validation splits:
+    dataset_size = len(dataset)
 
+    indices = list(range(dataset_size))
+    split = int(np.floor(validation_split * dataset_size))
+    if shuffle_dataset :
+        np.random.seed(random_seed)
+        np.random.shuffle(indices)
+    train_indices, val_indices = indices[split:], indices[:split]
+
+    # Creating PT data samplers and loaders:
+    train_sampler = SubsetRandomSampler(train_indices)
+    valid_sampler = SubsetRandomSampler(val_indices)
+
+    train_loader = torch.utils.data.DataLoader(dataset, batch_size=train_batch_size, 
+                                               sampler=train_sampler)
+    validation_loader = torch.utils.data.DataLoader(dataset, batch_size=valid_batch_size,
+                                                    sampler=valid_sampler)
+    return train_loader, validation_loader
     
 if __name__ == '__main__':
-    test1 = DataLoader(
-            dataset=OurDataLoader(data_dir=r'dataset', task_type = 'both', transform=image_transform(p=1), pose_sigma = 5),
-            shuffle=True,
-            batch_size=2,
-            pin_memory=torch.cuda.is_available()
-        )
 
+    dataset = OurDataLoader(data_dir=r'dataset', task_type = 'both', transform=image_transform(p=1), pose_sigma = 5, normalize_heatmap = True)
+    train_loader, validation_loader = train_val_dataset(dataset, validation_split = 0.3, train_batch_size = 2, valid_batch_size = 2, shuffle_dataset = True)
+    
+    
+    print("train_batchs: " + str(len(train_loader)))
+    print("valid_batchs: " + str(len(validation_loader)))
+    
+    import matplotlib.pyplot as plt
+    
+    # Usage Example:
+    num_epochs = 10
+    for epoch in range(num_epochs):
+        # Train:
+
+        print("train set:")
+        for batch_index, (image, labels) in enumerate(train_loader):
+            print('Epoch: ', epoch, '| Batch_index: ', batch_index, '| image: ',image.shape, '| labels: ', labels.shape)
+
+            
+        # Valid
+        print("valid set")
+        for batch_index, (image, labels) in enumerate(validation_loader):
+            print('Epoch: ', epoch, '| Batch_index: ', batch_index, '| image: ',image.shape, '| labels: ', labels.shape)
+            
+            '''
+            fig=plt.figure(figsize=(12, 6))
+            fig.add_subplot(2,4,1)
+            plt.imshow(image[0].view(image[0].shape[0], image[0].shape[1], image[0].shape[2]).permute(1, 2, 0))
+            fig.add_subplot(2,4,2)
+            plt.imshow(labels[0,:,:,0].view(labels[0].shape[0], labels[0].shape[1]))
+            fig.add_subplot(2,4,3)
+            plt.imshow(labels[0,:,:,1].view(labels[0].shape[0], labels[0].shape[1]))
+            
+            fig.add_subplot(2,4,4)
+            plt.imshow(labels[0,:,:,2].view(labels[0].shape[0], labels[0].shape[1]))
+
+            fig.add_subplot(2,4,5)
+            plt.imshow(labels[0,:,:,3].view(labels[0].shape[0], labels[0].shape[1]))
+       
+            fig.add_subplot(2,4,6)
+            plt.imshow(labels[0,:,:,4].view(labels[0].shape[0], labels[0].shape[1]))
+            fig.add_subplot(2,4,7)
+            plt.imshow(labels[0,:,:,5].view(labels[0].shape[0], labels[0].shape[1]))
+            fig.add_subplot(2,4,8)
+            plt.imshow(labels[0,:,:,6].view(labels[0].shape[0], labels[0].shape[1]))
+            plt.show()
+            '''
+
+
+
+
+
+
+
+
+    '''
     for epoch in range(2):
         for step, (batchX, batchY) in enumerate(test1):
             print('Epoch: ', epoch, '| Step: ', step, '| batch x: ',
@@ -345,7 +420,8 @@ if __name__ == '__main__':
         plt.imshow(batchY[0,:,:,5].view(batchY[0].shape[0], batchY[0].shape[1]))
         fig.add_subplot(2,4,8)
         plt.imshow(batchY[0,:,:,6].view(batchY[0].shape[0], batchY[0].shape[1]))
-        '''
+    '''
+    '''
         fig.add_subplot(2,3,1)
         plt.imshow(batchX[0].view(batchX[0].shape[0], batchX[0].shape[1], batchX[0].shape[2]).permute(1, 2, 0))
 
@@ -364,6 +440,5 @@ if __name__ == '__main__':
         
         fig.add_subplot(2,3,4)
         plt.imshow(batchY[0,:,:,2].view(batchY[0].shape[0], batchY[0].shape[1]))        
-        '''
-        plt.show()
-        break
+    '''
+
