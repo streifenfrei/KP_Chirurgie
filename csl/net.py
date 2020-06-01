@@ -186,6 +186,7 @@ def train(model: CSLNet, dataset, optimizer, lambdah=1, start_epoch=0, max_epoch
     save_file = os.path.join(output, 'csl.pth')
     validation_file = os.path.join(output, 'csv_val.csv')
     validation_string = ''
+    model.to(device)
     for epoch in range(start_epoch, max_epochs):
         # training
         model.train()
