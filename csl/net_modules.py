@@ -81,7 +81,7 @@ class Bottleneck(nn.Module):
         out = self.bn3(out)
 
         if self.downsample:
-            identity = self.identity_layer(out)
+            identity = self.identity_layer(x)
 
         out += identity
         out = self.relu(out)
