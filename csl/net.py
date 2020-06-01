@@ -143,46 +143,28 @@ class CSLNet(nn.Module):
 
 def loss_function(output, target, lambdah=1):
     output_segmentation, output_localisation = output
-    target_segmentation, target_localisation = target
+    segmentation_classes = output_segmentation.shape[1]
+    _, localisation_classes, height, width = output_localisation.shape
+    target = target.permute(0, 3, 1, 2)
+    target_segmentation, target_localisation = torch.split(target, [segmentation_classes, localisation_classes], dim=1)
     upsample = nn.Upsample(scale_factor=2, mode='bilinear', align_corners=False)
     output_segmentation = upsample(output_segmentation)
     output_localisation = upsample(output_localisation)
-    segmentation_classes = output_segmentation.shape[1]
-    localisation_classes = output_localisation.shape[1]
     # segmentation
-    segmentation_loss_function = nn.CrossEntropyLoss()
-    segmentation_loss = segmentation_loss_function(output_segmentation, target_segmentation)
+    target_segmentation_np = np.array([np.argmax(a, axis=1) for a in target_segmentation.numpy()])
+    target_segmentation = torch.tensor(target_segmentation_np)
+    segmentation_loss_function = nn.CrossEntropyLoss(reduction='sum')
+    segmentation_loss = segmentation_loss_function(output_segmentation, target_segmentation) / (width * height)
     # localization
     localisation_loss_function = nn.MSELoss(reduction='sum')
     localisation_loss = localisation_loss_function(output_localisation, target_localisation) / localisation_classes
     return segmentation_loss + (lambdah * localisation_loss)
 
 
-def prepare_batch(batch, segmentation_classes, localisation_classes):
-    inputs, target = batch
-    target = target.permute(0, 3, 1, 2)
-    target_segmentation, target_localisation = torch.split(target, [segmentation_classes, localisation_classes], dim=1)
-    target_segmentation_np = np.array([np.argmax(a, axis=1) for a in target_segmentation.numpy()])
-    target_segmentation = torch.tensor(target_segmentation_np)
-    return inputs, (target_segmentation, target_localisation)
-
-
-def prepare_datasets(datasets, segmentation_classes, localisation_classes):
-    train_loader, val_loader = datasets
-    new_train_loader = []
-    new_val_loader = []
-    for batch in train_loader:
-        new_train_loader.append(prepare_batch(batch, segmentation_classes, localisation_classes))
-    for batch in val_loader:
-        new_val_loader.append(prepare_batch(batch, segmentation_classes, localisation_classes))
-    return new_train_loader, new_val_loader
-
-
 def train(model: CSLNet, dataset, optimizer, lambdah=1, start_epoch=0, max_epochs=1000000, save_rate=100,
           output='', device="cpu"):
-    datasets = train_val_dataset(dataset, validation_split=0.3, train_batch_size=2,
-                                 valid_batch_size=2, shuffle_dataset=True)
-    train_loader, val_loader = prepare_datasets(datasets, model.segmentation_classes, model.localisation_classes)
+    train_loader, val_loader = train_val_dataset(dataset, validation_split=0.3, train_batch_size=2,
+                                                 valid_batch_size=2, shuffle_dataset=True)
     save_file = os.path.join(output, 'csl.pth')
     validation_file = os.path.join(output, 'csv_val.csv')
     validation_string = ''
@@ -192,12 +174,11 @@ def train(model: CSLNet, dataset, optimizer, lambdah=1, start_epoch=0, max_epoch
         model.train()
         for batch in train_loader:
             optimizer.zero_grad()
-            inputs, target = batch
+            inputs, targets = batch
             inputs = inputs.to(device)
-            target[0].to(device)
-            target[1].to(device)
             output = model(inputs)
-            loss = loss_function(output, target, lambdah)
+            targets = targets.to(device)
+            loss = loss_function(output, targets, lambdah)
             loss.backward()
             optimizer.step()
             print("training: epoch: {0} | batch: {1} | loss: {2}".format(epoch, batch, loss))
@@ -205,9 +186,11 @@ def train(model: CSLNet, dataset, optimizer, lambdah=1, start_epoch=0, max_epoch
         model.eval()
         validation_string += "\n{0}".format(str(epoch))
         for batch in val_loader:
-            inputs, target = batch
+            inputs, targets = batch
+            inputs.to(device)
             output = model(inputs)
-            loss = loss_function(output, target, lambdah)
+            targets = targets.to(device)
+            loss = loss_function(output, targets, lambdah)
             print("validation: epoch: {0} | batch: {1} | loss: {2}".format(epoch, batch, loss))
             validation_string += ",{0}".format(str(loss))
         # saving
