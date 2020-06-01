@@ -36,7 +36,7 @@ def train_model(workspace, dataset, normalize_heatmap=False):
 
     device = 'cpu'
     if torch.cuda.is_available():
-        device = 'gpu'
+        device = 'cuda'
     train(model, dataset, optimizer, start_epoch=epoch, output=workspace, device=device)
 
 
