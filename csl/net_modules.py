@@ -57,6 +57,15 @@ class Bottleneck(nn.Module):
         self.planes = planes
         self.norm_layer = norm_layer
 
+        if self.downsample:
+            self.identity_layer = nn.Sequential(
+                nn.Conv2d(self.inplanes, self.planes * Bottleneck.expansion,
+                          kernel_size=1,
+                          stride=self.stride,
+                          bias=False),
+                self.norm_layer(self.planes * Bottleneck.expansion)
+            )
+
     def forward(self, x):
         identity = x
 
@@ -72,13 +81,7 @@ class Bottleneck(nn.Module):
         out = self.bn3(out)
 
         if self.downsample:
-            identity = nn.Sequential(
-                nn.Conv2d(self.inplanes, self.planes * Bottleneck.expansion,
-                          kernel_size=1,
-                          stride=self.stride,
-                          bias=False),
-                self.norm_layer(self.planes * Bottleneck.expansion)
-            )(x)
+            identity = self.identity_layer(out)
 
         out += identity
         out = self.relu(out)
