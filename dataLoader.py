@@ -34,7 +34,8 @@ from torch.utils.data import DataLoader
 class_name_to_id_ = {
 'grasper':1,
 'scissors':2,
-'needle_holder ':3
+'needle_holder ':3,
+'background':0
 }
 
 landmark_name_to_id_ = {
@@ -361,27 +362,31 @@ if __name__ == '__main__':
             
             '''
             fig=plt.figure(figsize=(12, 6))
-            fig.add_subplot(2,4,1)
+            fig.add_subplot(3,4,1)
             plt.imshow(image[0].view(image[0].shape[0], image[0].shape[1], image[0].shape[2]).permute(1, 2, 0))
-            fig.add_subplot(2,4,2)
+            fig.add_subplot(3,4,2)
             plt.imshow(labels[0,:,:,0].view(labels[0].shape[0], labels[0].shape[1]))
-            fig.add_subplot(2,4,3)
+            fig.add_subplot(3,4,3)
             plt.imshow(labels[0,:,:,1].view(labels[0].shape[0], labels[0].shape[1]))
             
-            fig.add_subplot(2,4,4)
+            fig.add_subplot(3,4,4)
             plt.imshow(labels[0,:,:,2].view(labels[0].shape[0], labels[0].shape[1]))
 
-            fig.add_subplot(2,4,5)
+            fig.add_subplot(3,4,5)
             plt.imshow(labels[0,:,:,3].view(labels[0].shape[0], labels[0].shape[1]))
        
-            fig.add_subplot(2,4,6)
+            fig.add_subplot(3,4,6)
             plt.imshow(labels[0,:,:,4].view(labels[0].shape[0], labels[0].shape[1]))
-            fig.add_subplot(2,4,7)
+            fig.add_subplot(3,4,7)
             plt.imshow(labels[0,:,:,5].view(labels[0].shape[0], labels[0].shape[1]))
-            fig.add_subplot(2,4,8)
+            fig.add_subplot(3,4,8)
             plt.imshow(labels[0,:,:,6].view(labels[0].shape[0], labels[0].shape[1]))
+            fig.add_subplot(3,4,9)
+            plt.imshow(labels[0,:,:,7].view(labels[0].shape[0], labels[0].shape[1]))
             plt.show()
+            break
             '''
+        #break
 
 
 
