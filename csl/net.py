@@ -142,6 +142,34 @@ class CSLNet(nn.Module):
         return segmentation, localisation
 
 
+def logloss(true_label, predicted, eps=1e-15):
+  p = np.clip(predicted, eps, 1 - eps)
+  if true_label == 1:
+    return -np.log(p)
+  else:
+    return -np.log(1 - p)
+
+from scipy.special import softmax
+def seg(output_segmentation, target_segmentation):
+    output_segmentation = output_segmentation.numpy()
+    target_segmentation = target_segmentation.numpy()
+    batch_size, segmentation_classes, height, width = output_segmentation.shape
+    sum = 0
+    for b in range(batch_size):
+        for x in range(width):
+            for y in range(height):
+                for j in range(segmentation_classes):
+                    target_pixel = target_segmentation[b, y, x]
+                    if target_pixel == j:
+                        target_pixel = 1
+                    else:
+                        target_pixel = 0
+                    softmad = softmax([output_segmentation[b, a, y, x] for a in range(segmentation_classes)])[j]
+                    sum += logloss(target_pixel, softmad)
+    print(sum)
+    return sum / (width * height * batch_size)
+
+
 def loss_function(output, target, lambdah=1):
     output_segmentation, output_localisation = output
     target_segmentation, target_localisation = target
@@ -156,7 +184,7 @@ def loss_function(output, target, lambdah=1):
     localisation_loss_function = nn.MSELoss(reduction='sum')
     localisation_loss = localisation_loss_function(output_localisation, target_localisation) / (
                 localisation_classes * batch_size)
-    return segmentation_loss + (lambdah * localisation_loss)
+    return segmentation_loss + (lambdah * localisation_loss) , segmentation_loss.item(), localisation_loss.item()
 
 
 def prepare_batch(batch, segmentation_classes, localisation_classes):
@@ -185,10 +213,10 @@ def _train_step(epoch, index, batch, model, lambdah, device, optimizer):
     inputs = inputs.to(device)
     output = model(inputs)
     targets = (targets[0].to(device), targets[1].to(device))
-    loss = loss_function(output, targets, lambdah)
+    loss, segmentation_loss, localisation_loss = loss_function(output, targets, lambdah)
     loss.backward()
     optimizer.step()
-    print("training: epoch: {0} | batch: {1} | loss: {2}".format(epoch, index, loss))
+    print("training: epoch: {0} | batch: {1} | loss: {2} ({3} + {4} * {5})".format(epoch, index, loss, segmentation_loss, lambdah, localisation_loss))
 
 
 def _val_step(epoch, index, batch, model, lambdah, device):
@@ -196,12 +224,12 @@ def _val_step(epoch, index, batch, model, lambdah, device):
     inputs = inputs.to(device)
     output = model(inputs)
     targets = (targets[0].to(device), targets[1].to(device))
-    loss = loss_function(output, targets, lambdah)
-    print("validation: epoch: {0} | batch: {1} | loss: {2}".format(epoch, index, loss))
+    loss, segmentation_loss, localisation_loss = loss_function(output, targets, lambdah)
+    print("validation: epoch: {0} | batch: {1} | loss: {2} ({3} + {4} * {5})".format(epoch, index, loss, segmentation_loss, lambdah, localisation_loss))
     return ",{0}".format(str(loss.item()))
 
 
-def train(model: CSLNet, dataset, optimizer, lambdah=1, start_epoch=0, max_epochs=1000000, save_rate=100,
+def train(model: CSLNet, dataset, optimizer, lambdah=1, start_epoch=0, max_epochs=1000000, save_rate=10,
           output='', device="cpu"):
     datasets = train_val_dataset(dataset, validation_split=0.3, train_batch_size=1,
                                  valid_batch_size=1, shuffle_dataset=True)
