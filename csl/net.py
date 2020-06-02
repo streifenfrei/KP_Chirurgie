@@ -1,5 +1,6 @@
 import os
 from enum import IntEnum
+
 import numpy as np
 import torch
 from csl.net_modules import *
@@ -124,13 +125,13 @@ class CSLNet(nn.Module):
         # decoder
         x = self.decoding_layer1_1(x)
         dec1_2 = self.decoding_layer1_2(enc3)
-        x += dec1_2
+        x.add(dec1_2)
         x = self.decoding_layer2_1(x)
         dec2_2 = self.decoding_layer2_2(enc2)
-        x += dec2_2
+        x.add(dec2_2)
         x = self.decoding_layer3_1(x)
         dec3_2 = self.decoding_layer3_2(enc1)
-        x += dec3_2
+        x.add(dec3_2)
         x = self.decoding_layer4(x)
 
         # csl part
@@ -147,13 +148,15 @@ def loss_function(output, target, lambdah=1):
     upsample = nn.Upsample(scale_factor=2, mode='bilinear', align_corners=False)
     output_segmentation = upsample(output_segmentation)
     output_localisation = upsample(output_localisation)
-    _, localisation_classes, height, width = output_localisation.shape
+    batch_size, localisation_classes, height, width = output_localisation.shape
     # segmentation
-    segmentation_loss_function = nn.CrossEntropyLoss(reduction='sum')
-    segmentation_loss = segmentation_loss_function(output_segmentation, target_segmentation) / (width * height)
+    segmentation_loss_function = nn.CrossEntropyLoss(reduction='mean')
+    segmentation_loss = segmentation_loss_function(output_segmentation, target_segmentation)
     # localization
     localisation_loss_function = nn.MSELoss(reduction='sum')
-    localisation_loss = localisation_loss_function(output_localisation, target_localisation) / localisation_classes
+    localisation_loss = localisation_loss_function(output_localisation, target_localisation) / (localisation_classes * batch_size)
+    print(segmentation_loss.item())
+    print(localisation_loss.item())
     return segmentation_loss + (lambdah * localisation_loss)
 
 
@@ -161,7 +164,7 @@ def prepare_batch(batch, segmentation_classes, localisation_classes):
     inputs, target = batch
     target = target.permute(0, 3, 1, 2)
     target_segmentation, target_localisation = torch.split(target, [segmentation_classes, localisation_classes], dim=1)
-    target_segmentation_np = np.array([np.argmax(a, axis=1) for a in target_segmentation.numpy()])
+    target_segmentation_np = np.array([np.argmax(a, axis=0) for a in target_segmentation.numpy()])
     target_segmentation = torch.tensor(target_segmentation_np)
     return inputs, (target_segmentation, target_localisation)
 
@@ -177,6 +180,28 @@ def prepare_datasets(datasets, segmentation_classes, localisation_classes):
     return new_train_loader, new_val_loader
 
 
+def _train_step(epoch, index, batch, model, lambdah, device, optimizer):
+    optimizer.zero_grad()
+    inputs, targets = batch
+    inputs = inputs.to(device)
+    output = model(inputs)
+    targets = (targets[0].to(device), targets[1].to(device))
+    loss = loss_function(output, targets, lambdah)
+    loss.backward()
+    optimizer.step()
+    print("training: epoch: {0} | batch: {1} | loss: {2}".format(epoch, index, loss))
+
+
+def _val_step(epoch, index, batch, model, lambdah, device):
+    inputs, targets = batch
+    inputs = inputs.to(device)
+    output = model(inputs)
+    targets = (targets[0].to(device), targets[1].to(device))
+    loss = loss_function(output, targets, lambdah)
+    print("validation: epoch: {0} | batch: {1} | loss: {2}".format(epoch, index, loss))
+    return ",{0}".format(str(loss.item()))
+
+
 def train(model: CSLNet, dataset, optimizer, lambdah=1, start_epoch=0, max_epochs=1000000, save_rate=100,
           output='', device="cpu"):
     datasets = train_val_dataset(dataset, validation_split=0.3, train_batch_size=2,
@@ -185,31 +210,16 @@ def train(model: CSLNet, dataset, optimizer, lambdah=1, start_epoch=0, max_epoch
     save_file = os.path.join(output, 'csl.pth')
     validation_file = os.path.join(output, 'csl_val.csv')
     validation_string = ''
-    model.to(device)
     for epoch in range(start_epoch, max_epochs):
         # training
         model.train()
-        for batch in train_loader:
-            optimizer.zero_grad()
-            inputs, targets = batch
-            inputs = inputs.to(device)
-            output = model(inputs)
-            targets = (targets[0].to(device), targets[1].to(device))
-            loss = loss_function(output, targets, lambdah)
-            loss.backward()
-            optimizer.step()
-            print("training: epoch: {0} | batch: {1} | loss: {2}".format(epoch, batch, loss))
+        for index, batch in enumerate(train_loader):
+            _train_step(epoch, index, batch, model, lambdah, device, optimizer)
         # validation
         model.eval()
         validation_string += "\n{0}".format(str(epoch))
-        for batch in val_loader:
-            inputs, targets = batch
-            inputs.to(device)
-            output = model(inputs)
-            targets = (targets[0].to(device), targets[1].to(device))
-            loss = loss_function(output, targets, lambdah)
-            print("validation: epoch: {0} | batch: {1} | loss: {2}".format(epoch, batch, loss))
-            validation_string += ",{0}".format(str(loss))
+        for index, batch in enumerate(val_loader):
+            validation_string += _val_step(epoch, index, batch, model, lambdah, device)
         # saving
         if not epoch % save_rate:
             torch.save({
@@ -220,3 +230,5 @@ def train(model: CSLNet, dataset, optimizer, lambdah=1, start_epoch=0, max_epoch
             with open(validation_file, 'a') as file:
                 file.write(validation_string)
                 validation_string = ''
+            print("saved model.")
+        print("\n")
