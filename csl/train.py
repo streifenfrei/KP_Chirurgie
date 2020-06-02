@@ -5,15 +5,15 @@ import torch
 from csl.net import CSLNet, train
 from dataLoader import image_transform, OurDataLoader
 
-segmentation_classes = 3
+segmentation_classes = 4
 localisation_classes = 4
 learning_rate = 0.01
 sigma = 5
 
 
 def init_model(save_file):
-    model = CSLNet(segmentation_classes=3,
-                   localisation_classes=4)
+    model = CSLNet(segmentation_classes=segmentation_classes,
+                   localisation_classes=localisation_classes)
     model.load_state_dict(torch.load(os.path.abspath("weights/resnet50-19c8e357.pth")), strict=False)
     optimizer = torch.optim.Adam(model.parameters(), lr=learning_rate)
     torch.save({
@@ -29,17 +29,20 @@ def train_model(workspace, dataset, normalize_heatmap=False):
     if torch.cuda.is_available():
         device = 'cuda'
 
-    model = CSLNet()
+    model = CSLNet(segmentation_classes=segmentation_classes,
+                   localisation_classes=localisation_classes)
     model.load_state_dict(checkpoint['model_state_dict'])
     model.to(device)
     optimizer = torch.optim.Adam(model.parameters(), lr=learning_rate)
     optimizer.load_state_dict(checkpoint['optimizer_state_dict'])
+
     dataset = OurDataLoader(data_dir=dataset, task_type='both', transform=image_transform(p=1),
                             pose_sigma=sigma,
                             normalize_heatmap=normalize_heatmap)
     epoch = checkpoint['epoch']
-    del checkpoint
-    torch.cuda.empty_cache()
+    if device == 'cuda':
+        del checkpoint
+        torch.cuda.empty_cache()
     train(model, dataset, optimizer, start_epoch=epoch, output=workspace, device=device)
 
 

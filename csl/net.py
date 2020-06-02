@@ -154,9 +154,8 @@ def loss_function(output, target, lambdah=1):
     segmentation_loss = segmentation_loss_function(output_segmentation, target_segmentation)
     # localization
     localisation_loss_function = nn.MSELoss(reduction='sum')
-    localisation_loss = localisation_loss_function(output_localisation, target_localisation) / (localisation_classes * batch_size)
-    print(segmentation_loss.item())
-    print(localisation_loss.item())
+    localisation_loss = localisation_loss_function(output_localisation, target_localisation) / (
+                localisation_classes * batch_size)
     return segmentation_loss + (lambdah * localisation_loss)
 
 
@@ -204,8 +203,8 @@ def _val_step(epoch, index, batch, model, lambdah, device):
 
 def train(model: CSLNet, dataset, optimizer, lambdah=1, start_epoch=0, max_epochs=1000000, save_rate=100,
           output='', device="cpu"):
-    datasets = train_val_dataset(dataset, validation_split=0.3, train_batch_size=2,
-                                 valid_batch_size=2, shuffle_dataset=True)
+    datasets = train_val_dataset(dataset, validation_split=0.3, train_batch_size=1,
+                                 valid_batch_size=1, shuffle_dataset=True)
     train_loader, val_loader = prepare_datasets(datasets, model.segmentation_classes, model.localisation_classes)
     save_file = os.path.join(output, 'csl.pth')
     validation_file = os.path.join(output, 'csl_val.csv')
