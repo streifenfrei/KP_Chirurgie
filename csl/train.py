@@ -5,17 +5,22 @@ import torch
 from csl.net import CSLNet, train, visualize
 from dataLoader import image_transform, OurDataLoader
 
+# model
 segmentation_classes = 4
 localisation_classes = 4
-learning_rate = 0.01
+# optimizer
+learning_rate = 10e-7
+momentum = 0.9
+# loss
 sigma = 5
+lambdah = 1
 
 
 def init_model(save_file):
     model = CSLNet(segmentation_classes=segmentation_classes,
                    localisation_classes=localisation_classes)
     model.load_state_dict(torch.load(os.path.abspath("weights/resnet50-19c8e357.pth")), strict=False)
-    optimizer = torch.optim.Adam(model.parameters(), lr=learning_rate)
+    optimizer = torch.optim.SGD(model.parameters(), lr=learning_rate, momentum=momentum)
     torch.save({
         'model_state_dict': model.state_dict(),
         'optimizer_state_dict': optimizer.state_dict(),
@@ -37,7 +42,7 @@ def _load_model(state_dict):
 def train_model(workspace, dataset, normalize_heatmap=False):
     checkpoint = torch.load(os.path.join(workspace, 'csl.pth'))
     model, device = _load_model(checkpoint['model_state_dict'])
-    optimizer = torch.optim.Adam(model.parameters(), lr=learning_rate)
+    optimizer = torch.optim.SGD(model.parameters(), lr=learning_rate, momentum=momentum)
     optimizer.load_state_dict(checkpoint['optimizer_state_dict'])
     dataset = OurDataLoader(data_dir=dataset, task_type='both', transform=image_transform(p=1),
                             pose_sigma=sigma,
@@ -46,7 +51,7 @@ def train_model(workspace, dataset, normalize_heatmap=False):
     if device == 'cuda':
         del checkpoint
         torch.cuda.empty_cache()
-    train(model, dataset, optimizer, start_epoch=epoch, workspace=workspace, device=device)
+    train(model, dataset, optimizer, start_epoch=epoch, workspace=workspace, device=device, lambdah=lambdah)
 
 
 def call_model(workspace, dataset, normalize_heatmap=False):
