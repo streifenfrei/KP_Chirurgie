@@ -1,8 +1,6 @@
 import os
 from enum import IntEnum
 
-import numpy as np
-import torch
 from csl.net_modules import *
 from dataLoader import train_val_dataset
 
@@ -27,7 +25,7 @@ class CSLNet(nn.Module):
 
     def __init__(self,
                  encoder: Encoder = Encoder.res_net_50,
-                 segmentation_classes=3,
+                 segmentation_classes=4,
                  localisation_classes=4):
         super(CSLNet, self).__init__()
         self.inplanes = 64
@@ -69,7 +67,7 @@ class CSLNet(nn.Module):
         self.localisation_classes = localisation_classes
 
     def _make_decoder_block(self, planes):
-        return DecoderBlock(self.inplanes, self.inplanes, planes)
+        return DecoderBlock(self.inplanes, planes)
 
     def _make_bottleneck_block(self, planes, downsample=False, stride=1):
         return Bottleneck(self.inplanes, planes,
@@ -99,7 +97,7 @@ class CSLNet(nn.Module):
             for _ in range(1, bottleneck_blocks):
                 layers.append(self._make_bottleneck_block(bottleneck_planes))
         else:
-            layers.append(conv3x3(self.inplanes, planes))
+            layers.append(nn.Sequential(conv1x1(self.inplanes, planes), nn.BatchNorm2d(planes)))
             self.inplanes = planes
 
         if not update_planes:
@@ -115,15 +113,15 @@ class CSLNet(nn.Module):
 
         # encoder
         x = enc1 = self.encoding_layer1(x)
+
         x = enc2 = self.encoding_layer2(x)
         x = enc3 = self.encoding_layer3(x)
         x = self.encoding_layer4(x)
-
         # bottleneck
         x = self.bottleneck_layer(x)
-
         # decoder
         x = self.decoding_layer1_1(x)
+
         dec1_2 = self.decoding_layer1_2(enc3)
         x.add(dec1_2)
         x = self.decoding_layer2_1(x)
@@ -142,34 +140,6 @@ class CSLNet(nn.Module):
         return segmentation, localisation
 
 
-def logloss(true_label, predicted, eps=1e-15):
-  p = np.clip(predicted, eps, 1 - eps)
-  if true_label == 1:
-    return -np.log(p)
-  else:
-    return -np.log(1 - p)
-
-from scipy.special import softmax
-def seg(output_segmentation, target_segmentation):
-    output_segmentation = output_segmentation.numpy()
-    target_segmentation = target_segmentation.numpy()
-    batch_size, segmentation_classes, height, width = output_segmentation.shape
-    sum = 0
-    for b in range(batch_size):
-        for x in range(width):
-            for y in range(height):
-                for j in range(segmentation_classes):
-                    target_pixel = target_segmentation[b, y, x]
-                    if target_pixel == j:
-                        target_pixel = 1
-                    else:
-                        target_pixel = 0
-                    softmad = softmax([output_segmentation[b, a, y, x] for a in range(segmentation_classes)])[j]
-                    sum += logloss(target_pixel, softmad)
-    print(sum)
-    return sum / (width * height * batch_size)
-
-
 def loss_function(output, target, lambdah=1):
     output_segmentation, output_localisation = output
     target_segmentation, target_localisation = target
@@ -183,8 +153,8 @@ def loss_function(output, target, lambdah=1):
     # localization
     localisation_loss_function = nn.MSELoss(reduction='sum')
     localisation_loss = localisation_loss_function(output_localisation, target_localisation) / (
-                localisation_classes * batch_size)
-    return segmentation_loss + (lambdah * localisation_loss) , segmentation_loss.item(), localisation_loss.item()
+            localisation_classes * batch_size)
+    return segmentation_loss + (lambdah * localisation_loss), segmentation_loss.item(), localisation_loss.item()
 
 
 def prepare_batch(batch, segmentation_classes, localisation_classes):
@@ -216,7 +186,9 @@ def _train_step(epoch, index, batch, model, lambdah, device, optimizer):
     loss, segmentation_loss, localisation_loss = loss_function(output, targets, lambdah)
     loss.backward()
     optimizer.step()
-    print("training: epoch: {0} | batch: {1} | loss: {2} ({3} + {4} * {5})".format(epoch, index, loss, segmentation_loss, lambdah, localisation_loss))
+    print(
+        "training: epoch: {0} | batch: {1} | loss: {2} ({3} + {4} * {5})".format(epoch, index, loss, segmentation_loss,
+                                                                                 lambdah, localisation_loss))
 
 
 def _val_step(epoch, index, batch, model, lambdah, device):
@@ -225,17 +197,19 @@ def _val_step(epoch, index, batch, model, lambdah, device):
     output = model(inputs)
     targets = (targets[0].to(device), targets[1].to(device))
     loss, segmentation_loss, localisation_loss = loss_function(output, targets, lambdah)
-    print("validation: epoch: {0} | batch: {1} | loss: {2} ({3} + {4} * {5})".format(epoch, index, loss, segmentation_loss, lambdah, localisation_loss))
+    print("validation: epoch: {0} | batch: {1} | loss: {2} ({3} + {4} * {5})".format(epoch, index, loss,
+                                                                                     segmentation_loss, lambdah,
+                                                                                     localisation_loss))
     return ",{0}".format(str(loss.item()))
 
 
 def train(model: CSLNet, dataset, optimizer, lambdah=1, start_epoch=0, max_epochs=1000000, save_rate=10,
-          output='', device="cpu"):
+          workspace='', device="cpu"):
     datasets = train_val_dataset(dataset, validation_split=0.3, train_batch_size=1,
                                  valid_batch_size=1, shuffle_dataset=True)
     train_loader, val_loader = prepare_datasets(datasets, model.segmentation_classes, model.localisation_classes)
-    save_file = os.path.join(output, 'csl.pth')
-    validation_file = os.path.join(output, 'csl_val.csv')
+    save_file = os.path.join(workspace, 'csl.pth')
+    validation_file = os.path.join(workspace, 'csl_val.csv')
     validation_string = ''
     for epoch in range(start_epoch, max_epochs):
         # training
@@ -259,3 +233,35 @@ def train(model: CSLNet, dataset, optimizer, lambdah=1, start_epoch=0, max_epoch
                 validation_string = ''
             print("saved model.")
         print("\n")
+
+
+def visualize(model: CSLNet, dataset, device='cpu'):
+    loader = train_val_dataset(dataset, validation_split=0, train_batch_size=1,
+                                valid_batch_size=1, shuffle_dataset=True)[0]
+
+    model.eval()
+    import matplotlib.pyplot as plt
+    for batch in loader:
+        fig = plt.figure(figsize=(12, 6))
+        inputs, _ = batch
+        fig.add_subplot(2, 5, 1)
+        plt.imshow(inputs[0].view(inputs[0].shape[0], inputs[0].shape[1], inputs[0].shape[2]).permute(1, 2, 0))
+        fig_counter = 2
+        inputs = inputs.to(device)
+        segmentation, localisation = model(inputs)
+        segmentation = segmentation.cpu().detach()
+        localisation = localisation.cpu().detach()
+
+        batch_size, classes, width, height = list(segmentation.shape)
+        for seg_class in range(classes):
+            fig.add_subplot(2, 5, fig_counter)
+            fig_counter += 1
+            plt.imshow(segmentation[0, seg_class, :, :].view(width, height))
+
+        batch_size, classes, width, height = list(localisation.shape)
+        for loc_class in range(classes):
+            fig.add_subplot(2, 5, fig_counter)
+            fig_counter += 1
+            plt.imshow(segmentation[0, loc_class, :, :].view(width, height))
+        plt.show()
+

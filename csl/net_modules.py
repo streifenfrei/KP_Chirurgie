@@ -1,4 +1,11 @@
+import torch
 import torch.nn as nn
+import numpy as np
+
+
+def conv5x5(in_planes, out_planes, stride=1, groups=1, dilation=1, padding=2):
+    return nn.Conv2d(in_planes, out_planes, kernel_size=5, stride=stride,
+                     padding=padding, groups=groups, bias=False, dilation=dilation)
 
 
 def conv3x3(in_planes, out_planes, stride=1, groups=1, dilation=1):
@@ -11,29 +18,43 @@ def conv1x1(in_planes, out_planes, stride=1):
 
 
 class DecoderBlock(nn.Module):
-    def __init__(self, in_channels, middle_channels, out_channels, is_deconv=True):
+    def __init__(self, in_channels, out_channels):
         super(DecoderBlock, self).__init__()
         self.in_channels = in_channels
+        self.indices = None
 
-        if is_deconv:
-            self.block = nn.Sequential(
-                conv3x3(in_channels, middle_channels),
-                nn.ReLU(inplace=True),
-                nn.ConvTranspose2d(middle_channels, out_channels, kernel_size=4, stride=2,
-                                   padding=1),
-                nn.ReLU(inplace=True)
-            )
-        else:
-            self.block = nn.Sequential(
-                nn.Upsample(scale_factor=2, mode='bilinear'),
-                conv3x3(in_channels, middle_channels),
-                nn.ReLU(inplace=True),
-                conv3x3(middle_channels, out_channels),
-                nn.ReLU(inplace=True),
-            )
+        self.unpooling = nn.MaxUnpool2d(kernel_size=2)
+        self.conv1 = conv5x5(in_channels, out_channels)
+        self.relu1 = nn.ReLU(inplace=True)
+        self.proj = conv5x5(in_channels, out_channels)
+        self.conv2 = conv3x3(out_channels, out_channels)
+        self.relu2 = nn.ReLU(inplace=True)
 
     def forward(self, x):
-        return self.block(x)
+        if self.indices is None:
+            copy = torch.clone(x).cpu().detach()
+            self.indices = construct_indices(copy)
+            self.indices.requires_grad = False
+        proj = x = self.unpooling(x, self.indices)
+
+        x = self.conv1(x)
+        x = self.relu1(x)
+        x = self.conv2(x)
+        proj = self.proj(proj)
+        x.add(proj)
+        x = self.relu2(x)
+        return x
+
+
+def construct_indices(after_pooling):
+    our_indices = np.zeros_like(after_pooling, dtype=np.int64)
+    batch_num, channel_num, row_num, col_num = after_pooling.shape
+    for batch_id in range(batch_num):
+        for channel_id in range(channel_num):
+            for row_id in range(row_num):
+                for col_id in range(col_num):
+                    our_indices[batch_id, channel_id, row_id, col_id] = col_num * 2 * 2 * row_id + 2 * col_id
+    return torch.from_numpy(our_indices)
 
 
 class Bottleneck(nn.Module):
