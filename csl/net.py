@@ -262,6 +262,6 @@ def visualize(model: CSLNet, dataset, device='cpu'):
         for loc_class in range(classes):
             fig.add_subplot(2, 5, fig_counter)
             fig_counter += 1
-            plt.imshow(segmentation[0, loc_class, :, :].view(width, height))
+            plt.imshow(localisation[0, loc_class, :, :].view(width, height))
         plt.show()
 

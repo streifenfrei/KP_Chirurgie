@@ -34,7 +34,9 @@ class DecoderBlock(nn.Module):
         if self.indices is None:
             copy = torch.clone(x).cpu().detach()
             self.indices = construct_indices(copy)
+            self.indices = self.indices.to(x.device)
             self.indices.requires_grad = False
+            
         proj = x = self.unpooling(x, self.indices)
 
         x = self.conv1(x)
