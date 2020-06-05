@@ -31,7 +31,7 @@ class DecoderBlock(nn.Module):
         self.relu2 = nn.ReLU(inplace=True)
 
     def forward(self, x):
-        if self.indices is None:
+        if self.indices is None or list(self.indices.shape) != list(x.shape):
             copy = torch.clone(x).cpu().detach()
             self.indices = construct_indices(copy)
             self.indices = self.indices.to(x.device)

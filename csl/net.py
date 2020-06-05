@@ -205,8 +205,8 @@ def _val_step(epoch, index, batch, model, lambdah, device):
 
 def train(model: CSLNet, dataset, optimizer, lambdah=1, start_epoch=0, max_epochs=1000000, save_rate=10,
           workspace='', device="cpu"):
-    datasets = train_val_dataset(dataset, validation_split=0.3, train_batch_size=1,
-                                 valid_batch_size=1, shuffle_dataset=True)
+    datasets = train_val_dataset(dataset, validation_split=0.3, train_batch_size=2,
+                                 valid_batch_size=2, shuffle_dataset=True)
     train_loader, val_loader = prepare_datasets(datasets, model.segmentation_classes, model.localisation_classes)
     save_file = os.path.join(workspace, 'csl.pth')
     validation_file = os.path.join(workspace, 'csl_val.csv')
