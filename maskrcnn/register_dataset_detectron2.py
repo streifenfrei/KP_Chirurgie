@@ -1,34 +1,64 @@
 import os
-import numpy as np
 import json
+import numpy as np
 from detectron2.structures import BoxMode
 import dataLoader as dl
-import cv2
 import glob
 from pprint import pprint
 from typing import List, Dict
 from PIL import Image
-from base64 import decodestring
-#
-# '{"34020010494_e5cb88e1c4_k.jpg1115004":' \
-# '   {"fileref":"",' \
-# '   "size":1115004,' \
-# '   "filename":"34020010494_e5cb88e1c4_k.jpg","base64_img_data":"","file_attributes":{},' \
-# 'regions":{"0":{"shape_attributes":{"name":"polygon","all_points_x":[1020,1000,994,1003,1023,1050,1089,1134,1190,1265,1321,1361,1403,1428,1442,1445,1441,1427,1400,1361,1316,1269,1228,1198,1207,1210,1190,1177,1172,1174,1170,1153,1127,1104,1061,1032,1020],' \
-# '"all_points_y":[963,899,841,787,738,700,663,638,621,619,643,672,720,765,800,860,896,942,990,1035,1079,1112,1129,1134,1144,1153,1166,1166,1150,1136,1129,1122,1112,1084,1037,989,963]},\
-# "region_attributes":{}}}}'
 
-def save_img_from_base(filename, img_data, path_to_save):
 
+def save_img_from_base(filename: str, img_data: np.ndarray, path_to_save: str) -> None:
+    """
+    Saving images from numpy ndarray
+    This images will be further used for training of Detectron2 model
+
+    Args:
+        img_data: contains image as numpy array that will be converted and saved further
+
+    Returns:
+        nothing to return, image will be just saved
+    """
     image = Image.fromarray(img_data)
-    image.save(f"{path_to_save}"+filename)
+    image.save(f"{path_to_save}" + filename)
 
 
-def create_desription_single_file(json_file, for_json, path_to_save, save_image=False):
+def create_desription_single_file(json_file: str, for_json: dict, path_to_save: str, save_image: bool = False) -> dict:
+    """
+    Creating a description for a single file according to the example of
+    https://github.com/matterport/Mask_RCNN/releases/
+
+    Args:
+        json_file: file from whcih we get the whole infromation is an originally generated annotated
+        by labelme file
+        for_json: Dict that will be filled with information
+        path_to_save: where to save image and the dict dumped further as json
+        save_image: mode for image saving from base64 (is for the first time used)
+
+    Returns:
+        A filled dict `for_json` wil a filled information about the json_file
+        {'frame_00000.png':
+        {'fileref': '',
+         'size': 1555200,
+         'height': 540,
+         'width': 960,
+         'base64_img_data': '',
+         'file_attributes': {},
+         'regions':
+         {'8': {'name': 'polygon',
+                'all_points_x': [0.0, 435.037037037037, 441.2098765432099, 452.32098765432096, ,.....
+            354.7901234567901, 125.0, 1.0864197530864197],
+                'all_points_y': [521.0, 297.1358024691358, 284.1728395061728, 285.4074074074074,.......
+            333.55555555555554, 343.4320987654321, 357.6296296296296, 415.037037037037, 539.0, 538.4938271604938],
+             '  region_attributes': {},
+                'label': 'grasper'},
+
+    """
     data = json.load(open(json_file))
     try:
         imageData = data.get('imageData')
-        if (imageData is not None) and (imageData !=''):
+        if (imageData is not None) and (imageData != ''):
             img = dl.img_b64_to_arr(imageData)
             height, width = img.shape[:2]
             shapes = data['shapes']
@@ -63,33 +93,36 @@ def create_desription_single_file(json_file, for_json, path_to_save, save_image=
                     shape_attributes["region_attributes"] = {}
                     shape_attributes['label'] = shape['label']
                     regions[str(index)] = shape_attributes
-                    # print(f'{shape_attributes=}')
-                    # print(shape['label'])
     except ValueError:
         print(f'Failed to process {json_file =}')
     return for_json
 
-def create_desription_json_for_detectron_registration(json_folder:List[str],
-                                                      path_to_save, save_image = False)-> Dict:
+
+def create_desription_json_for_detectron_registration(json_folder: List[str],
+                                                      path_to_save: str, save_image=False) -> Dict:
     """
     Creates a description for the objects that are in the directory according to
+    the Google Colab from the official Docu of Detectron2
+    https://colab.research.google.com/drive/16jcaJoc6bCFAQ96jDe2HwtXj7BMD_-m5# -> Prepare the Dataset.
+
+    Here was made a structure like in baloon dataset description file `baloon/train/via_region_data.json`
     https://github.com/matterport/Mask_RCNN/releases/
     """
-
     for_json = dict()
 
-    for json_file in json_folder:
-        for_json = create_desription_single_file(json_file, for_json, path_to_save=path_to_save, save_image = save_image)
+    for index, json_file in enumerate(json_folder):
+        for_json = create_desription_single_file(json_file, for_json, path_to_save=path_to_save, save_image=save_image)
+        print(f'Finished {index=} for {json_file=}')
 
     with open(f'{path_to_save}/dataset_registration_detectron2.json', 'w') as f:
         json.dump(for_json, f)
     return for_json
 
 
-
 # json_img  = glob.glob('../dataset/*.json')
-json_img  = sorted(glob.glob('/Users/chernykh_alexander/Downloads/dataset/*.json'))
+json_img = sorted(glob.glob('/Users/chernykh_alexander/Downloads/dataset/*.json'))
 
 json_back = create_desription_json_for_detectron_registration(json_img,
-                                    path_to_save ='/Users/chernykh_alexander/Downloads/dataset/images/', save_image = True)
+                                                              path_to_save='/Users/chernykh_alexander/Downloads/dataset/images/',
+                                                              save_image=True)
 pprint(json_back)
