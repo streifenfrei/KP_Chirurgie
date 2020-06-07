@@ -68,6 +68,7 @@ def create_desription_single_file(json_file: str, for_json: dict, path_to_save: 
             filename = filename_without_extension + '.png'
             for_json[str(filename)] = single_image
             single_image['fileref'] = ""
+            single_image['filename']= filename
             single_image['size'] = img.size
             single_image['height'] = height
             single_image['width'] = width
@@ -80,19 +81,21 @@ def create_desription_single_file(json_file: str, for_json: dict, path_to_save: 
 
             for index, shape in enumerate(shapes):
                 if shape['shape_type'] == 'polygon':
-                    shape_attributes = dict()
-                    shape_attributes['name'] = 'polygon'
+                    shape_attr = dict()
+                    shape_attr['name'] = 'polygon'
                     all_points_x = list()
                     all_points_y = list()
                     for x, y in shape['points']:
                         all_points_x.append(x)
                         all_points_y.append(y)
 
-                    shape_attributes['all_points_x'] = all_points_x
-                    shape_attributes['all_points_y'] = all_points_y
-                    shape_attributes["region_attributes"] = {}
-                    shape_attributes['label'] = shape['label']
-                    regions[str(index)] = shape_attributes
+                    shape_attr['all_points_x'] = all_points_x
+                    shape_attr['all_points_y'] = all_points_y
+                    shape_attr['label'] = shape['label']
+                    shape_attribute = dict()
+                    shape_attribute['shape_attributes'] = shape_attr
+                    shape_attribute["region_attributes"] = {}
+                    regions[str(index)] = shape_attribute
     except ValueError:
         print(f'Failed to process {json_file =}')
     return for_json
@@ -124,5 +127,5 @@ json_img = sorted(glob.glob('/Users/chernykh_alexander/Downloads/dataset/*.json'
 
 json_back = create_desription_json_for_detectron_registration(json_img,
                                                               path_to_save='/Users/chernykh_alexander/Downloads/dataset/images/',
-                                                              save_image=True)
+                                                              save_image=False)
 pprint(json_back)
