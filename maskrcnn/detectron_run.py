@@ -2,17 +2,18 @@ import torch, torchvision
 import cython
 import detectron2
 from detectron2.utils.logger import setup_logger
-setup_logger()
 
+setup_logger()
+import random
 import cv2
+from typing import List
 
 # import some common detectron2 utilities
 from detectron2 import model_zoo
 from detectron2.engine import DefaultPredictor
 from detectron2.config import get_cfg
 from detectron2.utils.visualizer import Visualizer
-from detectron2.data import MetadataCatalog
-
+from detectron2.data import DatasetCatalog, MetadataCatalog
 
 from pprint import pprint
 import os
@@ -21,14 +22,17 @@ import json
 from detectron2.structures import BoxMode
 
 
+def inference_old_model(image_path: str = "../dataset/frame_00000.png") -> None:
+    """
+    This is an example inference based on a image that will be provided
 
-def inference_old_model():
-    im = cv2.imread("../dataset/frame_00000.png")
-    # cv2.imshow('image',im)
-
+    Returns:
+        Nothing to return, only shows the inference results via cv2.imshow
+    """
+    im = cv2.imread(image_path)
 
     cfg = get_cfg()
-    cfg.MODEL.DEVICE='cpu'
+    cfg.MODEL.DEVICE = 'cpu'
     # add project-specific config (e.g., TensorMask) here if you're not running a model in detectron2's core library
     cfg.merge_from_file(model_zoo.get_config_file("COCO-InstanceSegmentation/mask_rcnn_R_50_FPN_3x.yaml"))
     cfg.MODEL.ROI_HEADS.SCORE_THRESH_TEST = 0.5  # set threshold for this model
@@ -40,18 +44,34 @@ def inference_old_model():
     print(outputs["instances"].pred_boxes)
     v = Visualizer(im[:, :, ::-1], MetadataCatalog.get(cfg.DATASETS.TRAIN[0]), scale=1.2)
     v = v.draw_instance_predictions(outputs["instances"].to("cpu"))
-    # cv2_imshow(v.get_image()[:, :, ::-1])
-    cv2.imshow('image',v.get_image()[:, :, ::-1])
+
+    cv2.imshow('image', v.get_image()[:, :, ::-1])
     cv2.waitKey(0)
 
-    # def my_dataset_function():
-    #   return list[dict] in the following format
+
+def get_balloon_dicts(img_dir:str,
+                      json_with_desription_name: str = "dataset_registration_detectron2.json")->List[dict]:
+    """
+    Creating a description for each image in the image dir according to the json description
+    While extracting the description of from the json, Bounding Boxes will be also calculated
+
+    Args:
+        img_dir: dir where the images are located
+        json_with_desription_name: description json of every single image in the img_dir
+
+    Returns:
+        List with description of every image
+        F.e
+        [{'height': 540, 'width': 960, 'file_name':
+        '/instruments/train/frame_00000.png',
+         'image_id': 0, 'annotations': [{'bbox': [0.0, 218.12345679012344, 630.0987654320987, 539.0],
+         'bbox_mode': <BoxMode.XYXY_ABS: 0>, 'segmentation': [[0.5, 521.5, 435.537037037037, 297.6358024691358,
+            , 355.2901234567901, 415.537037037037, 125.5, 539.5, 1.5864197530864197, 538.9938271604938]],
+            'category_id': 2}, ..... ]
 
 
-
-
-def get_balloon_dicts(img_dir):
-    json_file = os.path.join(img_dir, "dataset_registration_detectron2.json")
+    """
+    json_file = os.path.join(img_dir, json_with_desription_name)
     with open(json_file) as f:
         imgs_anns = json.load(f)
 
@@ -62,12 +82,8 @@ def get_balloon_dicts(img_dir):
         filename = os.path.join(img_dir, v["filename"])
         record["height"] = v['height']
         record["width"] = v['width']
-        # height, width = cv2.imread(filename).shape[:2]
-
         record["file_name"] = filename
         record["image_id"] = idx
-        # record["height"] = height
-        # record["width"] = width
 
         annos = v["regions"]
         objs = []
@@ -91,6 +107,59 @@ def get_balloon_dicts(img_dir):
     return dataset_dicts
 
 
-img_dir = '/Users/chernykh_alexander/Downloads/dataset/images/'
-dataset_dicts = get_balloon_dicts(img_dir)
-pprint(dataset_dicts)
+def register_dataset_and_metadata(path_to_data, classes_list: List[str]) -> detectron2.data.catalog.Metadata:
+    """
+    Registrs the dataset according to the https://detectron2.readthedocs.io/tutorials/datasets.html
+
+    Args:
+        path_to_data: path to the folder, where the train and validation forlder is located
+                      folder train has images for training and a json that describes the
+                      data (bounding boxes, labels etc)
+        classes_list: is a list of all possible labels that might occur
+
+    Returns:
+        a registration Metadata object that can be further used for training/testing/validation
+        it is similar to a Dataloader
+
+    """
+    for d in ["train", "val"]:
+        DatasetCatalog.register("instruments_" + d, lambda d=d: get_balloon_dicts(path_to_data + d))
+        MetadataCatalog.get("instruments_" + d).set(thing_classes=classes_list)
+    instruments_metadata = MetadataCatalog.get("instruments_train")
+    return instruments_metadata
+
+
+def test_registration(instruments_metadata: detectron2.data.catalog.Metadata, path_to_training_data: str,
+                      json_with_desription_name: str = "dataset_registration_detectron2.json") -> None:
+    """
+    testing the registred dataset and its metadata by visualising the results of the annotation on the image
+
+
+    Args:
+        instruments_metadata: the registred data
+        path_to_training_data:
+
+    Returns:
+
+    """
+    dataset_dicts = get_balloon_dicts(path_to_training_data,
+                                      json_with_desription_name=json_with_desription_name)
+    for d in random.sample(dataset_dicts, 15):
+        img = cv2.imread(d["file_name"])
+        visualizer = Visualizer(img[:, :, ::-1], metadata=instruments_metadata, scale=0.5)
+        vis = visualizer.draw_dataset_dict(d)
+        cv2.imshow('image', vis.get_image()[:, :, ::-1])
+        cv2.waitKey(0)
+
+
+def main():
+    classes_list = ['scissors', 'needle_holder', 'grasper']
+    path_to_data = "/Users/chernykh_alexander/Yandex.Disk.localized/CloudTUD/Komp_CHRIRURGIE/instruments/"
+    instruments_metadata = register_dataset_and_metadata(path_to_data, classes_list)
+    path_to_training_data = "/Users/chernykh_alexander/Yandex.Disk.localized/CloudTUD/Komp_CHRIRURGIE/instruments/train"
+    test_registration(instruments_metadata, path_to_training_data,
+                      json_with_desription_name="dataset_registration_detectron2.json")
+
+
+if __name__ == "__main__":
+    main()

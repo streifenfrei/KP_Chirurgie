@@ -8,19 +8,14 @@ from pprint import pprint
 from typing import List, Dict
 from PIL import Image
 
+# Detectron 2 requires an integer instead of a class label as a string
+# This is a dict for mapping the class labels to integers
 mapping = {
         'scissors': 0,
         'needle_holder': 1,
         'needleholder':1,
         'grasper':2
     }
-
-def mask_to_class( mask):
-    for k in mapping:
-        mask[mask == k] = mapping[k]
-    return mask
-
-
 
 
 def save_img_from_base(filename: str, img_data: np.ndarray, path_to_save: str) -> None:
