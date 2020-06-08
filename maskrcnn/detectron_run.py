@@ -11,9 +11,11 @@ from typing import List
 # import some common detectron2 utilities
 from detectron2 import model_zoo
 from detectron2.engine import DefaultPredictor
-from detectron2.config import get_cfg
 from detectron2.utils.visualizer import Visualizer
 from detectron2.data import DatasetCatalog, MetadataCatalog
+
+from detectron2.engine import DefaultTrainer
+from detectron2.config import get_cfg
 
 from pprint import pprint
 import os
@@ -152,13 +154,38 @@ def test_registration(instruments_metadata: detectron2.data.catalog.Metadata, pa
         cv2.waitKey(0)
 
 
+
+def start_training(train_name:str="instruments_train", classes_list:List[str]=['scissors', 'needle_holder', 'grasper']):
+    cfg = get_cfg()
+    cfg.MODEL.DEVICE = 'cpu'
+    cfg.merge_from_file(model_zoo.get_config_file("COCO-InstanceSegmentation/mask_rcnn_R_50_FPN_3x.yaml"))
+    cfg.DATASETS.TRAIN = (train_name,)
+    cfg.DATASETS.TEST = ()
+    cfg.DATALOADER.NUM_WORKERS = 2
+    cfg.MODEL.WEIGHTS = model_zoo.get_checkpoint_url("COCO-InstanceSegmentation/mask_rcnn_R_50_FPN_3x.yaml")  # Let training initialize from model zoo
+    cfg.SOLVER.IMS_PER_BATCH = 2
+    cfg.SOLVER.BASE_LR = 0.00025  # pick a good LR
+    cfg.SOLVER.MAX_ITER = 10   # 300 iterations seems good enough for this toy dataset; you may need to train longer for a practical dataset
+    cfg.MODEL.ROI_HEADS.BATCH_SIZE_PER_IMAGE = 128   # faster, and good enough for this toy dataset (default: 512)
+    cfg.MODEL.ROI_HEADS.NUM_CLASSES = len(classes_list)
+
+    os.makedirs(cfg.OUTPUT_DIR, exist_ok=True)
+    trainer = DefaultTrainer(cfg)
+    trainer.resume_or_load(resume=False)
+    trainer.train()
+
+
 def main():
     classes_list = ['scissors', 'needle_holder', 'grasper']
     path_to_data = "/Users/chernykh_alexander/Yandex.Disk.localized/CloudTUD/Komp_CHRIRURGIE/instruments/"
     instruments_metadata = register_dataset_and_metadata(path_to_data, classes_list)
     path_to_training_data = "/Users/chernykh_alexander/Yandex.Disk.localized/CloudTUD/Komp_CHRIRURGIE/instruments/train"
-    test_registration(instruments_metadata, path_to_training_data,
-                      json_with_desription_name="dataset_registration_detectron2.json")
+
+    # test_registration(instruments_metadata, path_to_training_data,
+    #                   json_with_desription_name="dataset_registration_detectron2.json")
+
+    start_training(train_name="instruments_train", classes_list=['scissors', 'needle_holder', 'grasper'])
+
 
 
 if __name__ == "__main__":
