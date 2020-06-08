@@ -1,9 +1,8 @@
 import torch, torchvision
 import cython
 import detectron2
-from detectron2.utils.logger import setup_logger
+from detectron2.utils.logger import setup_logger, log_every_n
 
-setup_logger()
 import random
 import cv2
 from typing import List
@@ -13,7 +12,7 @@ from detectron2 import model_zoo
 from detectron2.engine import DefaultPredictor
 from detectron2.utils.visualizer import Visualizer
 from detectron2.data import DatasetCatalog, MetadataCatalog
-
+from detectron2.utils.visualizer import ColorMode
 from detectron2.engine import DefaultTrainer
 from detectron2.config import get_cfg
 
@@ -22,6 +21,14 @@ import os
 import numpy as np
 import json
 from detectron2.structures import BoxMode
+
+
+from detectron2.utils.events import get_event_storage
+
+# inside the model:
+
+#saving all logs
+setup_logger('./output/saved_logs.log')
 
 
 def inference_old_model(image_path: str = "../dataset/frame_00000.png") -> None:
@@ -157,6 +164,7 @@ def test_registration(instruments_metadata: detectron2.data.catalog.Metadata, pa
 
 def start_training(train_name:str="instruments_train", classes_list:List[str]=['scissors', 'needle_holder', 'grasper']):
     cfg = get_cfg()
+
     cfg.MODEL.DEVICE = 'cpu'
     cfg.merge_from_file(model_zoo.get_config_file("COCO-InstanceSegmentation/mask_rcnn_R_50_FPN_3x.yaml"))
     cfg.DATASETS.TRAIN = (train_name,)
@@ -165,7 +173,7 @@ def start_training(train_name:str="instruments_train", classes_list:List[str]=['
     cfg.MODEL.WEIGHTS = model_zoo.get_checkpoint_url("COCO-InstanceSegmentation/mask_rcnn_R_50_FPN_3x.yaml")  # Let training initialize from model zoo
     cfg.SOLVER.IMS_PER_BATCH = 2
     cfg.SOLVER.BASE_LR = 0.00025  # pick a good LR
-    cfg.SOLVER.MAX_ITER = 10   # 300 iterations seems good enough for this toy dataset; you may need to train longer for a practical dataset
+    cfg.SOLVER.MAX_ITER = 40   # 300 iterations seems good enough for this toy dataset; you may need to train longer for a practical dataset
     cfg.MODEL.ROI_HEADS.BATCH_SIZE_PER_IMAGE = 128   # faster, and good enough for this toy dataset (default: 512)
     cfg.MODEL.ROI_HEADS.NUM_CLASSES = len(classes_list)
 
@@ -173,6 +181,29 @@ def start_training(train_name:str="instruments_train", classes_list:List[str]=['
     trainer = DefaultTrainer(cfg)
     trainer.resume_or_load(resume=False)
     trainer.train()
+
+
+def inference_on_trained_mode(instruments_metadata, model_location = "model_final.pth", ):
+    cfg = get_cfg()
+    cfg.MODEL.DEVICE = 'cpu'
+    cfg.MODEL.WEIGHTS = os.path.join(cfg.OUTPUT_DIR, model_location)
+    cfg.MODEL.ROI_HEADS.SCORE_THRESH_TEST = 0.7  # set the testing threshold for this model
+    cfg.DATASETS.TEST = ("instruments_val",)
+    predictor = DefaultPredictor(cfg)
+
+    dataset_dicts = get_balloon_dicts("/Users/chernykh_alexander/Yandex.Disk.localized/CloudTUD/Komp_CHRIRURGIE/instruments/val")
+    # MetadataCatalog.get("instruments_val").set(thing_classes=classes_list)
+    for d in random.sample(dataset_dicts, 3):
+        im = cv2.imread(d["file_name"])
+        outputs = predictor(im)
+        v = Visualizer(im[:, :, ::-1],
+                       metadata=MetadataCatalog.get("instruments_val").set(thing_classes=['scissors', 'needle_holder', 'grasper']),
+                       scale=0.8,
+                       instance_mode=ColorMode.IMAGE_BW  # remove the colors of unsegmented pixels
+                       )
+        v = v.draw_instance_predictions(outputs["instances"])
+        cv2.imshow('image', v.get_image()[:, :, ::-1])
+        cv2.waitKey(0)
 
 
 def main():
@@ -184,9 +215,9 @@ def main():
     # test_registration(instruments_metadata, path_to_training_data,
     #                   json_with_desription_name="dataset_registration_detectron2.json")
 
-    start_training(train_name="instruments_train", classes_list=['scissors', 'needle_holder', 'grasper'])
+    # start_training(train_name="instruments_train", classes_list=['scissors', 'needle_holder', 'grasper'])
 
-
+    inference_on_trained_mode(instruments_metadata, "model_final.pth")
 
 if __name__ == "__main__":
     main()
