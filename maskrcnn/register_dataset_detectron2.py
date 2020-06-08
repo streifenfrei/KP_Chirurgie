@@ -8,6 +8,20 @@ from pprint import pprint
 from typing import List, Dict
 from PIL import Image
 
+mapping = {
+        'scissors': 0,
+        'needle_holder': 1,
+        'needleholder':1,
+        'grasper':2
+    }
+
+def mask_to_class( mask):
+    for k in mapping:
+        mask[mask == k] = mapping[k]
+    return mask
+
+
+
 
 def save_img_from_base(filename: str, img_data: np.ndarray, path_to_save: str) -> None:
     """
@@ -91,7 +105,8 @@ def create_desription_single_file(json_file: str, for_json: dict, path_to_save: 
 
                     shape_attr['all_points_x'] = all_points_x
                     shape_attr['all_points_y'] = all_points_y
-                    shape_attr['label'] = shape['label']
+                    print(shape['label'])
+                    shape_attr['label'] = mapping.get(shape['label'])
                     shape_attribute = dict()
                     shape_attribute['shape_attributes'] = shape_attr
                     shape_attribute["region_attributes"] = {}
@@ -115,7 +130,7 @@ def create_desription_json_for_detectron_registration(json_folder: List[str],
 
     for index, json_file in enumerate(json_folder):
         for_json = create_desription_single_file(json_file, for_json, path_to_save=path_to_save, save_image=save_image)
-        print(f'Finished {index=} for {json_file=}')
+        # print(f'Finished {index=} for {json_file=}')
 
     with open(f'{path_to_save}/dataset_registration_detectron2.json', 'w') as f:
         json.dump(for_json, f)
@@ -123,9 +138,9 @@ def create_desription_json_for_detectron_registration(json_folder: List[str],
 
 
 # json_img  = glob.glob('../dataset/*.json')
-json_img = sorted(glob.glob('/Users/chernykh_alexander/Downloads/dataset/*.json'))
+json_img = sorted(glob.glob('/Users/chernykh_alexander/Yandex.Disk.localized/CloudTUD/Komp_CHRIRURGIE/instruments/train_json/*.json'))
 
 json_back = create_desription_json_for_detectron_registration(json_img,
-                                                              path_to_save='/Users/chernykh_alexander/Downloads/dataset/images/',
+                                                              path_to_save='/Users/chernykh_alexander/Yandex.Disk.localized/CloudTUD/Komp_CHRIRURGIE/instruments/train/',
                                                               save_image=False)
 pprint(json_back)
