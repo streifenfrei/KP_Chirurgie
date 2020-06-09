@@ -79,6 +79,6 @@ if __name__ == '__main__':
         model_out = os.path.join(args.workspace, 'csl.pth')
         init_model(model_out)
     elif args.command == 'train':
-        train_model(args.workspace, args.dataset, args.normalize)
+        train_model(args.workspace, args.dataset, args.normalize, batch_size=args.batch)
     elif args.command == 'call':
-        call_model(args.workspace, args.dataset)
+        call_model(args.workspace, args.dataset, batch_size=args.batch)
