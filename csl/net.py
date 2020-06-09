@@ -19,10 +19,11 @@ class CSLNet(nn.Module):
         res_net_152 = 2
 
     class _Sampling(IntEnum):
-        none = 0
-        none_bottleneck = 1
-        up = 2
-        down = 3
+        none_relu = 0
+        none_norm = 1
+        none_bottleneck = 2
+        up = 3
+        down = 4
 
     def __init__(self,
                  encoder: Encoder = Encoder.res_net_50,
@@ -48,27 +49,24 @@ class CSLNet(nn.Module):
         self.encoding_layer3 = self._make_layer(1024, sampling=self._Sampling.down, bottleneck_blocks=layers[2])
         self.encoding_layer4 = self._make_layer(2048, sampling=self._Sampling.down, bottleneck_blocks=layers[3])
 
-        self.bottleneck_layer = self._make_layer(1024, sampling=self._Sampling.none)
+        self.bottleneck_layer = self._make_layer(1024, sampling=self._Sampling.none_norm)
 
         self.decoding_layer1_1 = self._make_layer(512, sampling=self._Sampling.up, update_planes=False)
-        self.decoding_layer1_2 = self._make_layer(512, sampling=self._Sampling.none)
+        self.decoding_layer1_2 = self._make_layer(512, sampling=self._Sampling.none_norm)
         self.decoding_layer2_1 = self._make_layer(256, sampling=self._Sampling.up, update_planes=False)
-        self.decoding_layer2_2 = self._make_layer(256, sampling=self._Sampling.none)
+        self.decoding_layer2_2 = self._make_layer(256, sampling=self._Sampling.none_norm)
         self.decoding_layer3_1 = self._make_layer(128, sampling=self._Sampling.up, update_planes=False)
-        self.decoding_layer3_2 = self._make_layer(128, sampling=self._Sampling.none)
+        self.decoding_layer3_2 = self._make_layer(128, sampling=self._Sampling.none_norm)
         self.decoding_layer4 = self._make_layer(64, sampling=self._Sampling.up)
 
-        self.segmentation_layer = self._make_layer(segmentation_classes, sampling=self._Sampling.none,
+        self.segmentation_layer = self._make_layer(segmentation_classes, sampling=self._Sampling.none_relu,
                                                    update_planes=False)
-        self.pre_localisation_layer = self._make_layer(32, sampling=self._Sampling.none)
+        self.pre_localisation_layer = self._make_layer(32, sampling=self._Sampling.none_relu)
         self.inplanes = 32 + segmentation_classes
-        self.localisation_layer = self._make_layer(localisation_classes, sampling=self._Sampling.none)
+        self.localisation_layer = self._make_layer(localisation_classes, sampling=self._Sampling.none_relu)
 
         self.segmentation_classes = segmentation_classes
         self.localisation_classes = localisation_classes
-
-    def _make_decoder_block(self, planes):
-        return DecoderBlock(self.inplanes, planes)
 
     def _make_bottleneck_block(self, planes, downsample=False, stride=1):
         return Bottleneck(self.inplanes, planes,
@@ -79,32 +77,38 @@ class CSLNet(nn.Module):
                           stride=stride,
                           norm_layer=self.norm_layer)
 
-    def _make_layer(self, planes, sampling: _Sampling = _Sampling.none, bottleneck_blocks=2, update_planes=True):
-        layers = []
+    def _make_layer(self, planes, sampling: _Sampling = _Sampling.none_norm, bottleneck_blocks=2, update_planes=True):
+        block = None
         old_inplanes = self.inplanes
         if sampling == self._Sampling.down:
+            layers = []
             bottleneck_planes = int(planes / Bottleneck.expansion)
             layers.append(self._make_bottleneck_block(bottleneck_planes, downsample=True, stride=2))
             self.inplanes = planes
             for _ in range(1, bottleneck_blocks):
                 layers.append(self._make_bottleneck_block(bottleneck_planes))
+            block = nn.Sequential(*layers)
         elif sampling == self._Sampling.up:
-            layers.append(self._make_decoder_block(planes))
+            block = DecoderBlock(self.inplanes, planes)
             self.inplanes = planes
         elif sampling == self._Sampling.none_bottleneck:
+            layers = []
             bottleneck_planes = int(planes / Bottleneck.expansion)
             layers.append(self._make_bottleneck_block(bottleneck_planes, downsample=True, stride=1))
             self.inplanes = planes
             for _ in range(1, bottleneck_blocks):
                 layers.append(self._make_bottleneck_block(bottleneck_planes))
-        else:
-            layers.append(nn.Sequential(conv1x1(self.inplanes, planes), nn.BatchNorm2d(planes)))
+            block = nn.Sequential(*layers)
+        elif sampling == self._Sampling.none_norm:
+            block = nn.Sequential(conv1x1(self.inplanes, planes), nn.BatchNorm2d(planes))
             self.inplanes = planes
+        elif sampling == self._Sampling.none_relu:
+            block = nn.Sequential(conv3x3(self.inplanes, planes), nn.ReLU(inplace=True))
 
         if not update_planes:
             self.inplanes = old_inplanes
 
-        return nn.Sequential(*layers)
+        return block
 
     def forward(self, x):
         x = self.conv1(x)

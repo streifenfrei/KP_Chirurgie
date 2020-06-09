@@ -55,7 +55,7 @@ def train_model(workspace, dataset, normalize_heatmap=False, batch_size=2):
 
 
 def call_model(workspace, dataset, normalize_heatmap=False, batch_size=2):
-    checkpoint = torch.load(os.path.join(workspace, 'csl.pth'))
+    checkpoint = torch.load(os.path.join(workspace, 'csl.pth'), map_location=torch.device('cpu'))
     model, device = _load_model(checkpoint['model_state_dict'])
     dataset = OurDataLoader(data_dir=dataset, task_type='both', transform=image_transform(p=1),
                             pose_sigma=sigma,
