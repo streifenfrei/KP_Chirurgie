@@ -186,6 +186,7 @@ def start_training(train_name:str="instruments_train", classes_list:List[str]=['
 def inference_on_trained_mode(instruments_metadata, model_location = "model_final.pth", ):
     cfg = get_cfg()
     cfg.MODEL.DEVICE = 'cpu'
+    cfg.merge_from_file(model_zoo.get_config_file("COCO-InstanceSegmentation/mask_rcnn_R_50_FPN_3x.yaml"))
     cfg.MODEL.WEIGHTS = os.path.join(cfg.OUTPUT_DIR, model_location)
     cfg.MODEL.ROI_HEADS.SCORE_THRESH_TEST = 0.7  # set the testing threshold for this model
     cfg.DATASETS.TEST = ("instruments_val",)
@@ -194,10 +195,17 @@ def inference_on_trained_mode(instruments_metadata, model_location = "model_fina
     dataset_dicts = get_balloon_dicts("/Users/chernykh_alexander/Yandex.Disk.localized/CloudTUD/Komp_CHRIRURGIE/instruments/val")
     # MetadataCatalog.get("instruments_val").set(thing_classes=classes_list)
     for d in random.sample(dataset_dicts, 3):
+        # img = cv2.imread(d["file_name"])
+        # visualizer = Visualizer(img[:, :, ::-1], metadata=instruments_metadata, scale=0.5)
+        # vis = visualizer.draw_dataset_dict(d)
+        # cv2.imshow('image', vis.get_image()[:, :, ::-1])
+        # cv2.waitKey(0)
+
         im = cv2.imread(d["file_name"])
         outputs = predictor(im)
         v = Visualizer(im[:, :, ::-1],
-                       metadata=MetadataCatalog.get("instruments_val").set(thing_classes=['scissors', 'needle_holder', 'grasper']),
+                       # metadata=MetadataCatalog.get("instruments_val").set(thing_classes=['scissors', 'needle_holder', 'grasper']),
+                       metadata=instruments_metadata,
                        scale=0.8,
                        instance_mode=ColorMode.IMAGE_BW  # remove the colors of unsegmented pixels
                        )
