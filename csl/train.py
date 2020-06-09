@@ -39,7 +39,7 @@ def _load_model(state_dict):
     return model, device
 
 
-def train_model(workspace, dataset, normalize_heatmap=False):
+def train_model(workspace, dataset, normalize_heatmap=False, batch_size=2):
     checkpoint = torch.load(os.path.join(workspace, 'csl.pth'))
     model, device = _load_model(checkpoint['model_state_dict'])
     optimizer = torch.optim.SGD(model.parameters(), lr=learning_rate, momentum=momentum)
@@ -51,10 +51,10 @@ def train_model(workspace, dataset, normalize_heatmap=False):
     if device == 'cuda':
         del checkpoint
         torch.cuda.empty_cache()
-    train(model, dataset, optimizer, start_epoch=epoch, workspace=workspace, device=device, lambdah=lambdah)
+    train(model, dataset, optimizer, start_epoch=epoch, workspace=workspace, device=device, lambdah=lambdah, batch_size=batch_size)
 
 
-def call_model(workspace, dataset, normalize_heatmap=False):
+def call_model(workspace, dataset, normalize_heatmap=False, batch_size=2):
     checkpoint = torch.load(os.path.join(workspace, 'csl.pth'))
     model, device = _load_model(checkpoint['model_state_dict'])
     dataset = OurDataLoader(data_dir=dataset, task_type='both', transform=image_transform(p=1),
@@ -63,7 +63,7 @@ def call_model(workspace, dataset, normalize_heatmap=False):
     if device == 'cuda':
         del checkpoint
         torch.cuda.empty_cache()
-    visualize(model, dataset, device)
+    visualize(model, dataset, device, batch_size=batch_size)
 
 
 if __name__ == '__main__':
@@ -72,6 +72,7 @@ if __name__ == '__main__':
     arg_parser.add_argument("--workspace", "-w", type=str, default='.')
     arg_parser.add_argument("--dataset", "-d", type=str, default='../dataset')
     arg_parser.add_argument("--normalize", "-n", action='store_true', default=False)
+    arg_parser.add_argument("--batch", "-b", type=int, default=2)
 
     args = arg_parser.parse_args()
     if args.command == 'init':

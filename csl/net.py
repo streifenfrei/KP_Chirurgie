@@ -1,5 +1,6 @@
 import os
 from enum import IntEnum
+from torch.utils.tensorboard import SummaryWriter
 
 from csl.net_modules import *
 from dataLoader import train_val_dataset
@@ -123,13 +124,13 @@ class CSLNet(nn.Module):
         x = self.decoding_layer1_1(x)
 
         dec1_2 = self.decoding_layer1_2(enc3)
-        x.add(dec1_2)
+        x = x.add(dec1_2)
         x = self.decoding_layer2_1(x)
         dec2_2 = self.decoding_layer2_2(enc2)
-        x.add(dec2_2)
+        x = x.add(dec2_2)
         x = self.decoding_layer3_1(x)
         dec3_2 = self.decoding_layer3_2(enc1)
-        x.add(dec3_2)
+        x = x.add(dec3_2)
         x = self.decoding_layer4(x)
 
         # csl part
@@ -200,15 +201,16 @@ def _val_step(epoch, index, batch, model, lambdah, device):
     print("validation: epoch: {0} | batch: {1} | loss: {2} ({3} + {4} * {5})".format(epoch, index, loss,
                                                                                      segmentation_loss, lambdah,
                                                                                      localisation_loss))
-    return ",{0}".format(str(loss.item()))
+    return loss.item()
 
 
 def train(model: CSLNet, dataset, optimizer, lambdah=1, start_epoch=0, max_epochs=1000000, save_rate=10,
-          workspace='', device="cpu"):
-    datasets = train_val_dataset(dataset, validation_split=0.3, train_batch_size=2,
-                                 valid_batch_size=2, shuffle_dataset=True)
+          workspace='', device="cpu", batch_size=2):
+    datasets = train_val_dataset(dataset, validation_split=0.3, train_batch_size=batch_size,
+                                 valid_batch_size=batch_size, shuffle_dataset=True)
     train_loader, val_loader = prepare_datasets(datasets, model.segmentation_classes, model.localisation_classes)
     save_file = os.path.join(workspace, 'csl.pth')
+    writer = SummaryWriter(log_dir=os.path.join(workspace, 'tensorboard'))
     validation_file = os.path.join(workspace, 'csl_val.csv')
     validation_string = ''
     for epoch in range(start_epoch, max_epochs):
@@ -219,8 +221,14 @@ def train(model: CSLNet, dataset, optimizer, lambdah=1, start_epoch=0, max_epoch
         # validation
         model.eval()
         validation_string += "\n{0}".format(str(epoch))
+        losses = []
         for index, batch in enumerate(val_loader):
-            validation_string += _val_step(epoch, index, batch, model, lambdah, device)
+            if epoch % save_rate and index == 0:
+                writer.add_graph(model, batch[0].to(device))
+            loss = _val_step(epoch, index, batch, model, lambdah, device)
+            losses.append(loss)
+            validation_string += ",{0}".format(str(loss))
+        writer.add_scalar('Loss', sum(losses) / len(losses), epoch)
         # saving
         if not epoch % save_rate:
             torch.save({
@@ -231,13 +239,14 @@ def train(model: CSLNet, dataset, optimizer, lambdah=1, start_epoch=0, max_epoch
             with open(validation_file, 'a') as file:
                 file.write(validation_string)
                 validation_string = ''
+            writer.flush()
             print("saved model.")
         print("\n")
 
 
-def visualize(model: CSLNet, dataset, device='cpu'):
-    loader = train_val_dataset(dataset, validation_split=0, train_batch_size=1,
-                                valid_batch_size=1, shuffle_dataset=True)[0]
+def visualize(model: CSLNet, dataset, device='cpu', batch_size=2):
+    loader = train_val_dataset(dataset, validation_split=0, train_batch_size=batch_size,
+                               valid_batch_size=batch_size, shuffle_dataset=True)[0]
 
     model.eval()
     import matplotlib.pyplot as plt
@@ -264,4 +273,3 @@ def visualize(model: CSLNet, dataset, device='cpu'):
             fig_counter += 1
             plt.imshow(localisation[0, loc_class, :, :].view(width, height))
         plt.show()
-
