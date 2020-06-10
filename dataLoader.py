@@ -34,7 +34,7 @@ from torch.utils.data import DataLoader
 class_name_to_id_ = {
 'grasper':1,
 'scissors':2,
-'needle_holder ':3,
+'needle_holder':3,
 'background':0
 }
 
