@@ -7,11 +7,12 @@ import json
 import os
 import matplotlib.pyplot as plt
 from matplotlib.patches import Rectangle
-from matplotlib import patches,  lines
-
-import random
-import itertools
-import colorsys
+from albumentations import (
+    HorizontalFlip,
+    VerticalFlip,
+    Normalize,
+    Compose
+)
 
 # for transforming base64 to image array
 import base64
@@ -35,6 +36,7 @@ class_name_to_id_ = {
 
 
 class MaskrcnnDataLoader(Dataset):
+
     def __init__(self, data_dir, transform=None, mode='train', task_type='segmentation',
                  class_name_to_id=class_name_to_id_):
         '''
@@ -68,12 +70,19 @@ class MaskrcnnDataLoader(Dataset):
         if self.task_type == 'segmentation':  # not binary but 4 channels: 4 instruments
             label = load_mask(image.shape, shapes, self.class_name_to_id)
 
+            #added augmentation && normalisation
+            data_to_augment = {'image': image, 'mask': label}
+            augmented = self.transform(**data_to_augment)
+            image, label = augmented['image'], augmented['mask']
+
             # construction of the boxes (ground truth for region proposal)
             obj_ids = np.unique(label)
             # first id is the background, so remove it
             obj_ids = obj_ids[1:]
             num_objs = len(obj_ids)
             masks = label == obj_ids[:, None, None]
+
+
             boxes = []
             for i in range(num_objs):
                 pos = np.where(masks[i])
@@ -87,13 +96,17 @@ class MaskrcnnDataLoader(Dataset):
             boxes = torch.as_tensor(boxes, dtype=torch.float32)
             masks = torch.from_numpy(label).long()
             labels = torch.ones((num_objs,), dtype=torch.int64)
-
+            image_id = torch.tensor([idx])
+            area = (boxes[:, 3] - boxes[:, 1]) * (boxes[:, 2] - boxes[:, 0])
             # creating the dict srtucture for the maskrcnn groundtruth
             # see https://pytorch.org/docs/stable/torchvision/models.html#mask-r-cnn
             target={}
+
             target["boxes"] = boxes
             target["labels"] = labels
             target["masks"] = masks
+            target["image_id"] = image_id
+            target["area"] = area
             #addded code
 
 
@@ -207,10 +220,15 @@ def load_mask(img_shape, shapes, class_name_to_id):
     ins[cls == -1] = 0  # ignore it.
     return ins
 
-
+def train_transform(p=1):
+    return Compose([
+        VerticalFlip(p=0.5),
+        HorizontalFlip(p=0.5),
+        Normalize(p=1)
+    ], p=p)
 if __name__ == '__main__':
     test1 = DataLoader(
-        dataset=MaskrcnnDataLoader(data_dir=r'./dataset/', ),
+        dataset=MaskrcnnDataLoader(data_dir=r'./dataset/', transform=train_transform()),
         shuffle=False,
         batch_size=1,
         pin_memory=torch.cuda.is_available()
