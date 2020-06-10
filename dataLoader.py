@@ -34,7 +34,7 @@ from torch.utils.data import DataLoader
 class_name_to_id_ = {
 'grasper':1,
 'scissors':2,
-'needle_holder':3,
+'needle_holder ':3,
 'background':0
 }
 
@@ -274,7 +274,10 @@ def load_pose(img_shape, shapes, landmark_name_to_id, pose_sigma, normalize_heat
             seg_image_cls = max_gaussian_help(cls, pose_sigma, landmark_name_to_id[each_class])
             seg_image = np.dstack((seg_image,seg_image_cls))
     if normalize_heatmap == True:
-        seg_image = seg_image * np.sqrt(2 * np.pi) * pose_sigma
+        seg_image = seg_image *  2 * np.pi * pose_sigma * pose_sigma
+    else:
+        seg_image_cls = seg_image_cls * np.sqrt(2 * np.pi) * pose_sigma
+        
     return seg_image
     
 def load_both(img_shape, shapes, class_name_to_id, landmark_name_to_id, pose_sigma, normalize_heatmap):
@@ -306,6 +309,8 @@ def load_both(img_shape, shapes, class_name_to_id, landmark_name_to_id, pose_sig
     for each_class in landmark_name_to_id:
         seg_image_cls = max_gaussian_help(cls_pose, pose_sigma, landmark_name_to_id[each_class])
         if normalize_heatmap == True:
+            seg_image_cls = seg_image_cls * 2 * np.pi * pose_sigma * pose_sigma
+        else:
             seg_image_cls = seg_image_cls * np.sqrt(2 * np.pi) * pose_sigma
         #print(seg_image_cls.shape)
         seg_image = np.dstack((seg_image,seg_image_cls))
@@ -349,7 +354,6 @@ if __name__ == '__main__':
     num_epochs = 10
     for epoch in range(num_epochs):
         # Train:
-
         print("train set:")
         for batch_index, (image, labels) in enumerate(train_loader):
             print('Epoch: ', epoch, '| Batch_index: ', batch_index, '| image: ',image.shape, '| labels: ', labels.shape)
