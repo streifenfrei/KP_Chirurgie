@@ -1,9 +1,10 @@
 import os
+import traceback
 from enum import IntEnum
 from torch.utils.tensorboard import SummaryWriter
 
 from csl.net_modules import *
-from dataLoader import train_val_dataset
+from dataLoader import train_val_dataset, OurDataLoader
 
 
 class CSLNet(nn.Module):
@@ -110,6 +111,109 @@ class CSLNet(nn.Module):
 
         return block
 
+    @staticmethod
+    def _reshape_filter_mask(mask: torch.Tensor):
+        n, c, w, h = list(mask.shape)
+        return nn.functional.pad(mask.reshape(n * c, 1, w, h), [1, 1, 1, 1], value=1)
+
+    def visualize_conv_filter(self, writer: SummaryWriter, global_step):
+        # initial
+        mask = self._reshape_filter_mask(self.conv1.weight)
+        writer.add_images("Encoder/Initial", mask, global_step=global_step)
+        # enc1
+        count = 1
+        for child in self.encoding_layer1.children():
+            if isinstance(child, Bottleneck):
+                mask = self._reshape_filter_mask(child.conv2.weight)
+                writer.add_images("Encoder/1/{0}".format(str(count)), mask, global_step=global_step)
+                count += 1
+        # enc2
+        count = 1
+        for child in self.encoding_layer2.children():
+            if isinstance(child, Bottleneck):
+                mask = self._reshape_filter_mask(child.conv2.weight)
+                writer.add_images("Encoder/2/{0}".format(str(count)), mask, global_step=global_step)
+                count += 1
+        # enc3
+        count = 1
+        for child in self.encoding_layer3.children():
+            if isinstance(child, Bottleneck):
+                mask = self._reshape_filter_mask(child.conv2.weight)
+                writer.add_images("Encoder/3/{0}".format(str(count)), mask, global_step=global_step)
+                count += 1
+        # enc4
+        count = 1
+        for child in self.encoding_layer4.children():
+            if isinstance(child, Bottleneck):
+                mask = self._reshape_filter_mask(child.conv2.weight)
+                writer.add_images("Encoder/4/{0}".format(str(count)), mask, global_step=global_step)
+                count += 1
+        # dec1
+        mask = self._reshape_filter_mask(self.decoding_layer1_1.conv1.weight)
+        writer.add_images("Decoder/1/1", mask, global_step=global_step)
+        mask = self._reshape_filter_mask(self.decoding_layer1_1.conv2.weight)
+        writer.add_images("Decoder/1/2", mask, global_step=global_step)
+        mask = self._reshape_filter_mask(self.decoding_layer1_1.proj.weight)
+        writer.add_images("Decoder/1/projection", mask, global_step=global_step)
+        # dec2
+        mask = self._reshape_filter_mask(self.decoding_layer2_1.conv1.weight)
+        writer.add_images("Decoder/2/1", mask, global_step=global_step)
+        mask = self._reshape_filter_mask(self.decoding_layer2_1.conv2.weight)
+        writer.add_images("Decoder/2/2", mask, global_step=global_step)
+        mask = self._reshape_filter_mask(self.decoding_layer2_1.proj.weight)
+        writer.add_images("Decoder/2/projection", mask, global_step=global_step)
+        # dec3
+        mask = self._reshape_filter_mask(self.decoding_layer3_1.conv1.weight)
+        writer.add_images("Decoder/3/1", mask, global_step=global_step)
+        mask = self._reshape_filter_mask(self.decoding_layer3_1.conv2.weight)
+        writer.add_images("Decoder/3/2", mask, global_step=global_step)
+        mask = self._reshape_filter_mask(self.decoding_layer3_1.proj.weight)
+        writer.add_images("Decoder/3/projection", mask, global_step=global_step)
+        # dec1
+        mask = self._reshape_filter_mask(self.decoding_layer4.conv1.weight)
+        writer.add_images("Decoder/4/1", mask, global_step=global_step)
+        mask = self._reshape_filter_mask(self.decoding_layer4.conv2.weight)
+        writer.add_images("Decoder/4/2", mask, global_step=global_step)
+        mask = self._reshape_filter_mask(self.decoding_layer4.proj.weight)
+        writer.add_images("Decoder/4/projection", mask, global_step=global_step)
+        # final
+        mask = self._reshape_filter_mask(next(self.segmentation_layer.children()).weight)
+        writer.add_images("Out/segmentation", mask, global_step=global_step)
+        mask = self._reshape_filter_mask(next(self.pre_localisation_layer.children()).weight)
+        writer.add_images("Out/pre localisation", mask, global_step=global_step)
+        mask = self._reshape_filter_mask(next(self.localisation_layer.children()).weight)
+        writer.add_images("Out/localisation", mask, global_step=global_step)
+
+    def visualize(self, dataset, device='cpu', batch_size=2):
+        loader = train_val_dataset(dataset, validation_split=0, train_batch_size=batch_size,
+                                   valid_batch_size=batch_size, shuffle_dataset=True)[0]
+
+        self.eval()
+        import matplotlib.pyplot as plt
+        for batch in loader:
+            fig = plt.figure(figsize=(12, 6))
+            inputs, target = batch
+            fig.add_subplot(2, 5, 1)
+            plt.imshow(inputs[0].view(inputs[0].shape[0], inputs[0].shape[1], inputs[0].shape[2]).permute(1, 2, 0))
+            fig_counter = 2
+            inputs = inputs.to(device)
+            segmentation, localisation = self(inputs)
+            segmentation = segmentation.cpu().detach()
+            localisation = localisation.cpu().detach()
+
+            batch_size, seg_classes, width, height = list(segmentation.shape)
+            for seg_class in range(seg_classes):
+                fig.add_subplot(2, 5, fig_counter)
+                fig_counter += 1
+                plt.imshow(segmentation[0, seg_class, :, :].view(width, height))
+
+            batch_size, loc_classes, width, height = list(localisation.shape)
+            for loc_class in range(loc_classes):
+                fig.add_subplot(2, 5, fig_counter)
+                fig_counter += 1
+                plt.imshow(localisation[0, loc_class, :, :].view(width, height))
+            plt.show()
+            
     def forward(self, x):
         x = self.conv1(x)
         x = self.bn1(x)
@@ -145,216 +249,179 @@ class CSLNet(nn.Module):
         return segmentation, localisation
 
 
-def loss_function(output, target, lambdah=1):
-    output_segmentation, output_localisation = output
-    target_segmentation, target_localisation = target
-    upsample = nn.Upsample(scale_factor=2, mode='bilinear', align_corners=False)
-    output_segmentation = upsample(output_segmentation)
-    output_localisation = upsample(output_localisation)
-    batch_size, localisation_classes, height, width = output_localisation.shape
-    # segmentation
-    segmentation_loss_function = nn.CrossEntropyLoss(reduction='mean')
-    segmentation_loss = segmentation_loss_function(output_segmentation, target_segmentation)
-    # localization
-    localisation_loss_function = nn.MSELoss(reduction='sum')
-    localisation_loss = localisation_loss_function(output_localisation, target_localisation) / (
-            localisation_classes * batch_size)
-    return segmentation_loss + (lambdah * localisation_loss), segmentation_loss.item(), localisation_loss.item()
+class Training:
 
+    def __init__(self, model: CSLNet, dataset: OurDataLoader, optimizer,
+                 segmentation_loss, lambdah: int = 1,
+                 start_epoch: int = 0, max_epochs: int = 100000, save_rate: int = 10,
+                 workspace: str = '', device: str = "cpu", batch_size: int = 2, validation_split=0.3):
+        self.model = model
+        self.workspace = workspace
+        self.device = device
 
-def prepare_batch(batch, segmentation_classes, localisation_classes):
-    inputs, target = batch
-    target = target.permute(0, 3, 1, 2)
-    target_segmentation, target_localisation = torch.split(target, [segmentation_classes, localisation_classes], dim=1)
-    target_segmentation_np = np.array([np.argmax(a, axis=0) for a in target_segmentation.numpy()])
-    target_segmentation = torch.tensor(target_segmentation_np)
-    return inputs, (target_segmentation, target_localisation)
+        self.datasets = train_val_dataset(dataset, validation_split=validation_split, train_batch_size=batch_size,
+                                          valid_batch_size=batch_size, shuffle_dataset=True)
+        self.optimizer = optimizer
+        self.segmentation_loss = segmentation_loss
+        self.lambdah = lambdah
 
+        self.start_epoch = start_epoch
+        self.max_epochs = max_epochs
+        self.save_rate = save_rate
 
-def prepare_datasets(datasets, segmentation_classes, localisation_classes):
-    train_loader, val_loader = datasets
-    new_train_loader = []
-    new_val_loader = []
-    for batch in train_loader:
-        new_train_loader.append(prepare_batch(batch, segmentation_classes, localisation_classes))
-    for batch in val_loader:
-        new_val_loader.append(prepare_batch(batch, segmentation_classes, localisation_classes))
-    return new_train_loader, new_val_loader
+    class LossFunction:
 
+        class SegmentationLoss(IntEnum):
+            cross_entropy = 0
+            weighted_cross_entropy = 1
+            dice = 2
 
-def _reshape_filter_mask(mask: torch.Tensor):
-    n, c, w, h = list(mask.shape)
-    return nn.functional.pad(mask.reshape(n * c, 1, w, h), [1, 1, 1, 1], value=1)
+        class _DiceLoss:
 
+            def __call__(self, output, target):
+                probs = nn.functional.softmax(output, dim=1)
 
-def visualize_conv_filter(model: CSLNet, writer: SummaryWriter, global_step):
-    # initial
-    mask = _reshape_filter_mask(model.conv1.weight)
-    writer.add_images("Encoder/Initial", mask, global_step=global_step)
-    # enc1
-    count = 1
-    for child in model.encoding_layer1.children():
-        if isinstance(child, Bottleneck):
-            mask = _reshape_filter_mask(child.conv2.weight)
-            writer.add_images("Encoder/1/{0}".format(str(count)), mask, global_step=global_step)
-            count += 1
-    # enc2
-    count = 1
-    for child in model.encoding_layer2.children():
-        if isinstance(child, Bottleneck):
-            mask = _reshape_filter_mask(child.conv2.weight)
-            writer.add_images("Encoder/2/{0}".format(str(count)), mask, global_step=global_step)
-            count += 1
-    # enc3
-    count = 1
-    for child in model.encoding_layer3.children():
-        if isinstance(child, Bottleneck):
-            mask = _reshape_filter_mask(child.conv2.weight)
-            writer.add_images("Encoder/3/{0}".format(str(count)), mask, global_step=global_step)
-            count += 1
-    # enc4
-    count = 1
-    for child in model.encoding_layer4.children():
-        if isinstance(child, Bottleneck):
-            mask = _reshape_filter_mask(child.conv2.weight)
-            writer.add_images("Encoder/4/{0}".format(str(count)), mask, global_step=global_step)
-            count += 1
-    # dec1
-    mask = _reshape_filter_mask(model.decoding_layer1_1.conv1.weight)
-    writer.add_images("Decoder/1/1", mask, global_step=global_step)
-    mask = _reshape_filter_mask(model.decoding_layer1_1.conv2.weight)
-    writer.add_images("Decoder/1/2", mask, global_step=global_step)
-    mask = _reshape_filter_mask(model.decoding_layer1_1.proj.weight)
-    writer.add_images("Decoder/1/projection", mask, global_step=global_step)
-    # dec2
-    mask = _reshape_filter_mask(model.decoding_layer2_1.conv1.weight)
-    writer.add_images("Decoder/2/1", mask, global_step=global_step)
-    mask = _reshape_filter_mask(model.decoding_layer2_1.conv2.weight)
-    writer.add_images("Decoder/2/2", mask, global_step=global_step)
-    mask = _reshape_filter_mask(model.decoding_layer2_1.proj.weight)
-    writer.add_images("Decoder/2/projection", mask, global_step=global_step)
-    # dec3
-    mask = _reshape_filter_mask(model.decoding_layer3_1.conv1.weight)
-    writer.add_images("Decoder/3/1", mask, global_step=global_step)
-    mask = _reshape_filter_mask(model.decoding_layer3_1.conv2.weight)
-    writer.add_images("Decoder/3/2", mask, global_step=global_step)
-    mask = _reshape_filter_mask(model.decoding_layer3_1.proj.weight)
-    writer.add_images("Decoder/3/projection", mask, global_step=global_step)
-    # dec1
-    mask = _reshape_filter_mask(model.decoding_layer4.conv1.weight)
-    writer.add_images("Decoder/4/1", mask, global_step=global_step)
-    mask = _reshape_filter_mask(model.decoding_layer4.conv2.weight)
-    writer.add_images("Decoder/4/2", mask, global_step=global_step)
-    mask = _reshape_filter_mask(model.decoding_layer4.proj.weight)
-    writer.add_images("Decoder/4/projection", mask, global_step=global_step)
-    # final
-    mask = _reshape_filter_mask(next(model.segmentation_layer.children()).weight)
-    writer.add_images("Out/segmentation", mask, global_step=global_step)
-    mask = _reshape_filter_mask(next(model.pre_localisation_layer.children()).weight)
-    writer.add_images("Out/pre localisation", mask, global_step=global_step)
-    mask = _reshape_filter_mask(next(model.localisation_layer.children()).weight)
-    writer.add_images("Out/localisation", mask, global_step=global_step)
+                num = probs * target  # b,c,h,w--p*g
+                num = torch.sum(num, dim=3)  # b,c,h
+                num = torch.sum(num, dim=2)
 
+                den1 = probs * probs  # --p^2
+                den1 = torch.sum(den1, dim=3)  # b,c,h
+                den1 = torch.sum(den1, dim=2)
 
-def _train_step(epoch, index, batch, model, lambdah, device, optimizer):
-    optimizer.zero_grad()
-    inputs, targets = batch
-    inputs = inputs.to(device)
-    output = model(inputs)
-    targets = (targets[0].to(device), targets[1].to(device))
-    loss, segmentation_loss, localisation_loss = loss_function(output, targets, lambdah)
-    loss.backward()
-    optimizer.step()
-    print(
-        "training: epoch: {0} | batch: {1} | loss: {2} ({3} + {4} * {5})".format(epoch, index, loss, segmentation_loss,
-                                                                                 lambdah, localisation_loss))
-    return loss.item()
+                den2 = target * target  # --g^2
+                den2 = torch.sum(den2, dim=3)  # b,c,h
+                den2 = torch.sum(den2, dim=2)  # b,c
 
+                dice = 2 * (num / (den1 + den2))
 
-def _val_step(epoch, index, batch, model, lambdah, device):
-    inputs, targets = batch
-    inputs = inputs.to(device)
-    output = model(inputs)
-    targets = (targets[0].to(device), targets[1].to(device))
-    loss, segmentation_loss, localisation_loss = loss_function(output, targets, lambdah)
-    print("validation: epoch: {0} | batch: {1} | loss: {2} ({3} + {4} * {5})".format(epoch, index, loss,
-                                                                                     segmentation_loss, lambdah,
-                                                                                     localisation_loss))
-    return loss.item()
+                dice_eso = dice[:, 0:-1]  # we ignore bg dice val, and take the fg
 
+                dice_total = 3 - torch.sum(dice_eso) / dice_eso.size(0)  # divide by batch_sz
 
-def train(model: CSLNet, dataset, optimizer, lambdah=1, start_epoch=0, max_epochs=1000000, save_rate=10,
-          workspace='', device="cpu", batch_size=2):
-    writer = SummaryWriter(log_dir=os.path.join(workspace, 'tensorboard'))
-    datasets = train_val_dataset(dataset, validation_split=0.3, train_batch_size=batch_size,
-                                 valid_batch_size=batch_size, shuffle_dataset=True)
-    train_loader, val_loader = prepare_datasets(datasets, model.segmentation_classes, model.localisation_classes)
-    save_file = os.path.join(workspace, 'csl.pth')
-    # tensorboard
-    for epoch in range(start_epoch, max_epochs):
-        # training
-        model.train()
-        losses = []
-        for index, batch in enumerate(train_loader):
-            loss = _train_step(epoch, index, batch, model, lambdah, device, optimizer)
-            losses.append(loss)
-        writer.add_scalar('Loss/training', sum(losses) / len(losses), epoch)
-        # validation
-        model.eval()
-        losses = []
-        for index, batch in enumerate(val_loader):
-            loss = _val_step(epoch, index, batch, model, lambdah, device)
-            losses.append(loss)
-            if epoch == start_epoch and index == 0:
-                writer.add_graph(model, batch[0].to(device))
-        writer.add_scalar('Loss/validation', sum(losses) / len(losses), epoch)
-        # saving
-        if not epoch % save_rate:
-            # move old model to older_models directory
-            if os.path.exists(save_file):
-                model_directory = os.path.join(workspace, "older_models")
-                if not os.path.exists(model_directory):
-                    os.mkdir(model_directory)
-                old_epoch = torch.load(save_file)['epoch']
-                os.replace(save_file, os.path.join(model_directory, 'csl_{0}.pth'.format(old_epoch)))
-            # save current model
-            torch.save({
-                'model_state_dict': model.state_dict(),
-                'optimizer_state_dict': optimizer.state_dict(),
-                'epoch': epoch + 1,
-            }, save_file)
-            writer.flush()
-            visualize_conv_filter(model, writer, epoch)
-            print("saved model.")
-        print("\n")
+                return dice_total
 
+        def __init__(self, segmentation_loss: SegmentationLoss, device, lambdah=1, wce_array=np.array([1, 3, 3, 0.01])):
+            self.segmentation_loss = segmentation_loss
+            self.wce_weight = torch.from_numpy(wce_array).float().to(device)
+            self.lambdah = lambdah
 
-def visualize(model: CSLNet, dataset, device='cpu', batch_size=2):
-    loader = train_val_dataset(dataset, validation_split=0, train_batch_size=batch_size,
-                               valid_batch_size=batch_size, shuffle_dataset=True)[0]
+        def __call__(self, output, target):
+            output_segmentation, output_localisation = output
+            target_segmentation, target_localisation = target
+            upsample = nn.Upsample(scale_factor=2, mode='bilinear', align_corners=False)
+            output_segmentation = upsample(output_segmentation)
+            output_localisation = upsample(output_localisation)
+            batch_size, localisation_classes, height, width = output_localisation.shape
+            # segmentation
+            if self.segmentation_loss == self.SegmentationLoss.cross_entropy:
+                segmentation_loss_function = nn.CrossEntropyLoss(reduction='mean')
+            elif self.segmentation_loss == self.SegmentationLoss.weighted_cross_entropy:
+                segmentation_loss_function = nn.CrossEntropyLoss(weight=self.wce_weight, reduction='mean')
+            elif self.segmentation_loss == self.SegmentationLoss.dice:
+                segmentation_loss_function = self._DiceLoss()
+            else:
+                raise ValueError
+            segmentation_loss = segmentation_loss_function(output_segmentation, target_segmentation)
+            # localization
+            localisation_loss_function = nn.MSELoss(reduction='sum')
+            localisation_loss = localisation_loss_function(output_localisation, target_localisation) / (
+                    localisation_classes * batch_size)
+            return segmentation_loss + (
+                    self.lambdah * localisation_loss), segmentation_loss.item(), localisation_loss.item()
 
-    model.eval()
-    import matplotlib.pyplot as plt
-    for batch in loader:
-        fig = plt.figure(figsize=(12, 6))
+    def _prepare_batch(self, batch):
         inputs, target = batch
-        fig.add_subplot(2, 5, 1)
-        plt.imshow(inputs[0].view(inputs[0].shape[0], inputs[0].shape[1], inputs[0].shape[2]).permute(1, 2, 0))
-        fig_counter = 2
-        inputs = inputs.to(device)
-        segmentation, localisation = model(inputs)
-        segmentation = segmentation.cpu().detach()
-        localisation = localisation.cpu().detach()
+        target = target.permute(0, 3, 1, 2)
+        target_segmentation, target_localisation = torch.split(target, [self.model.segmentation_classes,
+                                                                        self.model.localisation_classes],
+                                                               dim=1)
+        if self.segmentation_loss != Training.LossFunction.SegmentationLoss.dice:
+            target_segmentation_np = np.array([np.argmax(a, axis=0) for a in target_segmentation.numpy()])
+            target_segmentation = torch.tensor(target_segmentation_np)
+        return inputs, (target_segmentation, target_localisation)
 
-        batch_size, seg_classes, width, height = list(segmentation.shape)
-        for seg_class in range(seg_classes):
-            fig.add_subplot(2, 5, fig_counter)
-            fig_counter += 1
-            plt.imshow(segmentation[0, seg_class, :, :].view(width, height))
+    def _prepare_datasets(self):
+        train_loader, val_loader = self.datasets
+        new_train_loader = []
+        new_val_loader = []
+        for batch in train_loader:
+            new_train_loader.append(self._prepare_batch(batch))
+        for batch in val_loader:
+            new_val_loader.append(self._prepare_batch(batch))
+        return new_train_loader, new_val_loader
 
-        batch_size, loc_classes, width, height = list(localisation.shape)
-        for loc_class in range(loc_classes):
-            fig.add_subplot(2, 5, fig_counter)
-            fig_counter += 1
-            plt.imshow(localisation[0, loc_class, :, :].view(width, height))
-        plt.show()
+    def _get_loss(self, batch):
+        inputs, targets = batch
+        inputs = inputs.to(self.device)
+        output = self.model(inputs)
+        targets = (targets[0].to(self.device), targets[1].to(self.device))
+        loss_function = self.LossFunction(self.segmentation_loss, self.device, self.lambdah)
+        return loss_function(output, targets)
+
+    def _train_step(self, epoch, index, batch):
+        self.optimizer.zero_grad()
+        loss, segmentation_loss, localisation_loss = self._get_loss(batch)
+        loss.backward()
+        self.optimizer.step()
+        print(
+            "training: epoch: {0} | batch: {1} | loss: {2} ({3} + {4} * {5})".format(epoch, index, loss,
+                                                                                     segmentation_loss,
+                                                                                     self.lambdah, localisation_loss))
+        return loss.item()
+
+    def _val_step(self, epoch, index, batch):
+        loss, segmentation_loss, localisation_loss = self._get_loss(batch)
+        print("validation: epoch: {0} | batch: {1} | loss: {2} ({3} + {4} * {5})".format(epoch, index, loss,
+                                                                                         segmentation_loss, self.lambdah,
+                                                                                         localisation_loss))
+        return loss.item()
+
+    def start(self):
+        writer = SummaryWriter(log_dir=os.path.join(self.workspace, 'tensorboard'))
+        try:
+            train_loader, val_loader = self._prepare_datasets()
+            save_file = os.path.join(self.workspace, 'csl.pth')
+            for epoch in range(self.start_epoch, self.max_epochs):
+                # training
+                self.model.train()
+                losses = []
+                for index, batch in enumerate(train_loader):
+                    loss = self._train_step(epoch, index, batch)
+                    losses.append(loss)
+                writer.add_scalar('Loss/training', sum(losses) / len(losses), epoch)
+                # validation
+                self.model.eval()
+                losses = []
+                for index, batch in enumerate(val_loader):
+                    loss = self._val_step(epoch, index, batch)
+                    losses.append(loss)
+                    if epoch == self.start_epoch and index == 0:
+                        writer.add_graph(self.model, batch[0].to(self.device))
+                writer.add_scalar('Loss/validation', sum(losses) / len(losses), epoch)
+                # saving
+                if not epoch % self.save_rate:
+                    # move old model to older_models directory
+                    if os.path.exists(save_file):
+                        model_directory = os.path.join(self.workspace, "older_models")
+                        if not os.path.exists(model_directory):
+                            os.mkdir(model_directory)
+                        old_epoch = torch.load(save_file)['epoch']
+                        os.replace(save_file, os.path.join(model_directory, 'csl_{0}.pth'.format(old_epoch)))
+                    # save current model
+                    torch.save({
+                        'model_state_dict': self.model.state_dict(),
+                        'optimizer_state_dict': self.optimizer.state_dict(),
+                        'epoch': epoch + 1,
+                    }, save_file)
+                    writer.flush()
+                    self.model.visualize_conv_filter(writer, epoch)
+                    print("saved model.")
+                print("\n")
+        except KeyboardInterrupt:
+            pass
+        finally:
+            writer.close()
+
+
+

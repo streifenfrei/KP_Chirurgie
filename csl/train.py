@@ -2,7 +2,7 @@ import os
 from argparse import ArgumentParser
 
 import torch
-from csl.net import CSLNet, train, visualize
+from csl.net import CSLNet, Training
 from dataLoader import image_transform, OurDataLoader
 
 # model
@@ -20,7 +20,7 @@ def init_model(save_file):
     model = CSLNet(segmentation_classes=segmentation_classes,
                    localisation_classes=localisation_classes)
     model.load_state_dict(torch.load(os.path.abspath("weights/resnet50-19c8e357.pth")), strict=False)
-    optimizer = torch.optim.Adam(model.parameters(), lr=learning_rate)
+    optimizer = torch.optim.SGD(model.parameters(), lr=learning_rate, momentum=momentum)
     torch.save({
         'model_state_dict': model.state_dict(),
         'optimizer_state_dict': optimizer.state_dict(),
@@ -39,7 +39,7 @@ def _load_model(state_dict):
     return model, device
 
 
-def train_model(workspace, dataset, normalize_heatmap=False, batch_size=2):
+def train_model(workspace, dataset, segmentation_loss, normalize_heatmap=False, batch_size=2):
     checkpoint = torch.load(os.path.join(workspace, 'csl.pth'))
     model, device = _load_model(checkpoint['model_state_dict'])
     optimizer = torch.optim.SGD(model.parameters(), lr=learning_rate, momentum=momentum)
@@ -51,7 +51,9 @@ def train_model(workspace, dataset, normalize_heatmap=False, batch_size=2):
     if device == 'cuda':
         del checkpoint
         torch.cuda.empty_cache()
-    train(model, dataset, optimizer, start_epoch=epoch, workspace=workspace, device=device, lambdah=lambdah, batch_size=batch_size)
+    training = Training(model, dataset, optimizer, segmentation_loss, start_epoch=epoch, workspace=workspace,
+                        device=device, lambdah=lambdah, batch_size=batch_size)
+    training.start()
 
 
 def call_model(workspace, dataset, normalize_heatmap=False, batch_size=2):
@@ -63,7 +65,7 @@ def call_model(workspace, dataset, normalize_heatmap=False, batch_size=2):
     if device == 'cuda':
         del checkpoint
         torch.cuda.empty_cache()
-    visualize(model, dataset, device, batch_size=batch_size)
+    model.visualize(dataset, device, batch_size=batch_size)
 
 
 if __name__ == '__main__':
@@ -71,14 +73,24 @@ if __name__ == '__main__':
     arg_parser.add_argument("--command", "-c", type=str, choices=['init', 'train', 'call'], default='train')
     arg_parser.add_argument("--workspace", "-w", type=str, default='.')
     arg_parser.add_argument("--dataset", "-d", type=str, default='../dataset')
+    arg_parser.add_argument("--segloss", "-sl", type=str, choices=['ce', 'wce', 'dice'], default='wce')
     arg_parser.add_argument("--normalize", "-n", action='store_true', default=False)
     arg_parser.add_argument("--batch", "-b", type=int, default=2)
-
     args = arg_parser.parse_args()
+
     if args.command == 'init':
         model_out = os.path.join(args.workspace, 'csl.pth')
         init_model(model_out)
     elif args.command == 'train':
-        train_model(args.workspace, args.dataset, args.normalize, batch_size=args.batch)
+        if args.segloss == 'ce':
+            segmentation_loss = Training.LossFunction.SegmentationLoss.cross_entropy
+        elif args.segloss == 'wce':
+            segmentation_loss = Training.LossFunction.SegmentationLoss.weighted_cross_entropy
+        elif args.segloss == 'dice':
+            segmentation_loss = Training.LossFunction.SegmentationLoss.dice
+        else:
+            raise ValueError
+        train_model(args.workspace, args.dataset, segmentation_loss,
+                    normalize_heatmap=args.normalize, batch_size=args.batch)
     elif args.command == 'call':
         call_model(args.workspace, args.dataset, normalize_heatmap=args.normalize, batch_size=args.batch)
