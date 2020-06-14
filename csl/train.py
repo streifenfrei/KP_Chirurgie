@@ -81,4 +81,4 @@ if __name__ == '__main__':
     elif args.command == 'train':
         train_model(args.workspace, args.dataset, args.normalize, batch_size=args.batch)
     elif args.command == 'call':
-        call_model(args.workspace, args.dataset, batch_size=args.batch)
+        call_model(args.workspace, args.dataset, normalize_heatmap=args.normalize, batch_size=args.batch)

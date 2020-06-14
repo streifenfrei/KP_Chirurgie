@@ -182,6 +182,80 @@ def prepare_datasets(datasets, segmentation_classes, localisation_classes):
     return new_train_loader, new_val_loader
 
 
+def _reshape_filter_mask(mask: torch.Tensor):
+    n, c, w, h = list(mask.shape)
+    return nn.functional.pad(mask.reshape(n * c, 1, w, h), [1, 1, 1, 1], value=1)
+
+
+def visualize_conv_filter(model: CSLNet, writer: SummaryWriter, global_step):
+    # initial
+    mask = _reshape_filter_mask(model.conv1.weight)
+    writer.add_images("Encoder/Initial", mask, global_step=global_step)
+    # enc1
+    count = 1
+    for child in model.encoding_layer1.children():
+        if isinstance(child, Bottleneck):
+            mask = _reshape_filter_mask(child.conv2.weight)
+            writer.add_images("Encoder/1/{0}".format(str(count)), mask, global_step=global_step)
+            count += 1
+    # enc2
+    count = 1
+    for child in model.encoding_layer2.children():
+        if isinstance(child, Bottleneck):
+            mask = _reshape_filter_mask(child.conv2.weight)
+            writer.add_images("Encoder/2/{0}".format(str(count)), mask, global_step=global_step)
+            count += 1
+    # enc3
+    count = 1
+    for child in model.encoding_layer3.children():
+        if isinstance(child, Bottleneck):
+            mask = _reshape_filter_mask(child.conv2.weight)
+            writer.add_images("Encoder/3/{0}".format(str(count)), mask, global_step=global_step)
+            count += 1
+    # enc4
+    count = 1
+    for child in model.encoding_layer4.children():
+        if isinstance(child, Bottleneck):
+            mask = _reshape_filter_mask(child.conv2.weight)
+            writer.add_images("Encoder/4/{0}".format(str(count)), mask, global_step=global_step)
+            count += 1
+    # dec1
+    mask = _reshape_filter_mask(model.decoding_layer1_1.conv1.weight)
+    writer.add_images("Decoder/1/1", mask, global_step=global_step)
+    mask = _reshape_filter_mask(model.decoding_layer1_1.conv2.weight)
+    writer.add_images("Decoder/1/2", mask, global_step=global_step)
+    mask = _reshape_filter_mask(model.decoding_layer1_1.proj.weight)
+    writer.add_images("Decoder/1/projection", mask, global_step=global_step)
+    # dec2
+    mask = _reshape_filter_mask(model.decoding_layer2_1.conv1.weight)
+    writer.add_images("Decoder/2/1", mask, global_step=global_step)
+    mask = _reshape_filter_mask(model.decoding_layer2_1.conv2.weight)
+    writer.add_images("Decoder/2/2", mask, global_step=global_step)
+    mask = _reshape_filter_mask(model.decoding_layer2_1.proj.weight)
+    writer.add_images("Decoder/2/projection", mask, global_step=global_step)
+    # dec3
+    mask = _reshape_filter_mask(model.decoding_layer3_1.conv1.weight)
+    writer.add_images("Decoder/3/1", mask, global_step=global_step)
+    mask = _reshape_filter_mask(model.decoding_layer3_1.conv2.weight)
+    writer.add_images("Decoder/3/2", mask, global_step=global_step)
+    mask = _reshape_filter_mask(model.decoding_layer3_1.proj.weight)
+    writer.add_images("Decoder/3/projection", mask, global_step=global_step)
+    # dec1
+    mask = _reshape_filter_mask(model.decoding_layer4.conv1.weight)
+    writer.add_images("Decoder/4/1", mask, global_step=global_step)
+    mask = _reshape_filter_mask(model.decoding_layer4.conv2.weight)
+    writer.add_images("Decoder/4/2", mask, global_step=global_step)
+    mask = _reshape_filter_mask(model.decoding_layer4.proj.weight)
+    writer.add_images("Decoder/4/projection", mask, global_step=global_step)
+    # final
+    mask = _reshape_filter_mask(next(model.segmentation_layer.children()).weight)
+    writer.add_images("Out/segmentation", mask, global_step=global_step)
+    mask = _reshape_filter_mask(next(model.pre_localisation_layer.children()).weight)
+    writer.add_images("Out/pre localisation", mask, global_step=global_step)
+    mask = _reshape_filter_mask(next(model.localisation_layer.children()).weight)
+    writer.add_images("Out/localisation", mask, global_step=global_step)
+
+
 def _train_step(epoch, index, batch, model, lambdah, device, optimizer):
     optimizer.zero_grad()
     inputs, targets = batch
@@ -211,12 +285,12 @@ def _val_step(epoch, index, batch, model, lambdah, device):
 
 def train(model: CSLNet, dataset, optimizer, lambdah=1, start_epoch=0, max_epochs=1000000, save_rate=10,
           workspace='', device="cpu", batch_size=2):
+    writer = SummaryWriter(log_dir=os.path.join(workspace, 'tensorboard'))
     datasets = train_val_dataset(dataset, validation_split=0.3, train_batch_size=batch_size,
                                  valid_batch_size=batch_size, shuffle_dataset=True)
     train_loader, val_loader = prepare_datasets(datasets, model.segmentation_classes, model.localisation_classes)
     save_file = os.path.join(workspace, 'csl.pth')
     # tensorboard
-    writer = SummaryWriter(log_dir=os.path.join(workspace, 'tensorboard'))
     for epoch in range(start_epoch, max_epochs):
         # training
         model.train()
@@ -242,6 +316,7 @@ def train(model: CSLNet, dataset, optimizer, lambdah=1, start_epoch=0, max_epoch
                 'epoch': epoch + 1,
             }, save_file)
             writer.flush()
+            visualize_conv_filter(model, writer, epoch)
             print("saved model.")
         print("\n")
 
@@ -254,7 +329,7 @@ def visualize(model: CSLNet, dataset, device='cpu', batch_size=2):
     import matplotlib.pyplot as plt
     for batch in loader:
         fig = plt.figure(figsize=(12, 6))
-        inputs, _ = batch
+        inputs, target = batch
         fig.add_subplot(2, 5, 1)
         plt.imshow(inputs[0].view(inputs[0].shape[0], inputs[0].shape[1], inputs[0].shape[2]).permute(1, 2, 0))
         fig_counter = 2
@@ -263,14 +338,14 @@ def visualize(model: CSLNet, dataset, device='cpu', batch_size=2):
         segmentation = segmentation.cpu().detach()
         localisation = localisation.cpu().detach()
 
-        batch_size, classes, width, height = list(segmentation.shape)
-        for seg_class in range(classes):
+        batch_size, seg_classes, width, height = list(segmentation.shape)
+        for seg_class in range(seg_classes):
             fig.add_subplot(2, 5, fig_counter)
             fig_counter += 1
             plt.imshow(segmentation[0, seg_class, :, :].view(width, height))
 
-        batch_size, classes, width, height = list(localisation.shape)
-        for loc_class in range(classes):
+        batch_size, loc_classes, width, height = list(localisation.shape)
+        for loc_class in range(loc_classes):
             fig.add_subplot(2, 5, fig_counter)
             fig_counter += 1
             plt.imshow(localisation[0, loc_class, :, :].view(width, height))
