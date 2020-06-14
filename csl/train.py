@@ -9,8 +9,8 @@ from dataLoader import image_transform, OurDataLoader
 segmentation_classes = 4
 localisation_classes = 4
 # optimizer
-learning_rate = 10e-7
-momentum = 0.9
+learning_rate = 10e-2
+momentum = 0.9  # for SGD
 # loss
 sigma = 5
 lambdah = 1
@@ -20,7 +20,7 @@ def init_model(save_file):
     model = CSLNet(segmentation_classes=segmentation_classes,
                    localisation_classes=localisation_classes)
     model.load_state_dict(torch.load(os.path.abspath("weights/resnet50-19c8e357.pth")), strict=False)
-    optimizer = torch.optim.SGD(model.parameters(), lr=learning_rate, momentum=momentum)
+    optimizer = torch.optim.Adam(model.parameters(), lr=learning_rate)
     torch.save({
         'model_state_dict': model.state_dict(),
         'optimizer_state_dict': optimizer.state_dict(),
