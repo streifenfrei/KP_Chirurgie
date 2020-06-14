@@ -310,6 +310,14 @@ def train(model: CSLNet, dataset, optimizer, lambdah=1, start_epoch=0, max_epoch
         writer.add_scalar('Loss/validation', sum(losses) / len(losses), epoch)
         # saving
         if not epoch % save_rate:
+            # move old model to older_models directory
+            if os.path.exists(save_file):
+                model_directory = os.path.join(workspace, "older_models")
+                if not os.path.exists(model_directory):
+                    os.mkdir(model_directory)
+                old_epoch = torch.load(save_file)['epoch']
+                os.replace(save_file, os.path.join(model_directory, 'csl_{0}.pth'.format(old_epoch)))
+            # save current model
             torch.save({
                 'model_state_dict': model.state_dict(),
                 'optimizer_state_dict': optimizer.state_dict(),
