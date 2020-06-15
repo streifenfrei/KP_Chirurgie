@@ -20,7 +20,7 @@ def init_model(save_file):
     model = CSLNet(segmentation_classes=segmentation_classes,
                    localisation_classes=localisation_classes)
     model.load_state_dict(torch.load(os.path.abspath("weights/resnet50-19c8e357.pth")), strict=False)
-    optimizer = torch.optim.SGD(model.parameters(), lr=learning_rate, momentum=momentum)
+    optimizer = torch.optim.Adam(model.parameters(), lr=learning_rate)
     torch.save({
         'model_state_dict': model.state_dict(),
         'optimizer_state_dict': optimizer.state_dict(),
@@ -42,7 +42,7 @@ def _load_model(state_dict):
 def train_model(workspace, dataset, segmentation_loss, normalize_heatmap=False, batch_size=2):
     checkpoint = torch.load(os.path.join(workspace, 'csl.pth'))
     model, device = _load_model(checkpoint['model_state_dict'])
-    optimizer = torch.optim.SGD(model.parameters(), lr=learning_rate, momentum=momentum)
+    optimizer = torch.optim.Adam(model.parameters(), lr=learning_rate)
     optimizer.load_state_dict(checkpoint['optimizer_state_dict'])
     dataset = OurDataLoader(data_dir=dataset, task_type='both', transform=image_transform(p=1),
                             pose_sigma=sigma,
