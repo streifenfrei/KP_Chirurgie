@@ -10,7 +10,7 @@ from dataLoader import image_transform, OurDataLoader, train_val_dataset
 #https://stackoverflow.com/questions/9111711/get-coordinates-of-local-maxima-in-2d-array-above-certain-value
 def non_max_suppression(img_landmark):
     neighborhood_size = 10
-    threshold = 0.2
+    threshold = 0.3
     print(np.amax(img_landmark))
     data = np.array(img_landmark* 256, dtype=int) 
 
@@ -44,8 +44,8 @@ def nearest_neighbors(target_xy, array):
     return np.argsort(np.array([np.linalg.norm(target_xy-x) for x in array]))[0]
     
 def findNN(image_label, image_predicted):
-    xy_label = non_max_suppression(imags_label)
-    xy_predict = non_max_suppression(imags_predict)
+    xy_label = non_max_suppression(image_label)
+    xy_predict = non_max_suppression(image_predicted)
     
     pair_list = []
     for i in xy_label:
@@ -56,18 +56,54 @@ def findNN(image_label, image_predicted):
     
     fig=plt.figure(figsize=(12, 6))
     fig.add_subplot(1,3,1)    
-    plt.imshow(imags_label)
+    plt.imshow(image_label)
     fig.add_subplot(1,3,2)    
-    plt.imshow(imags_predict)
+    plt.imshow(image_predicted)
     fig.add_subplot(1,3,3)
-    plt.imshow(imags_predict + imags_label)
+    plt.imshow(image_predicted + image_label)
     for pair in pair_array:
         plt.plot(pair[0][0],pair[0][1], 'r+', markersize=15)
         plt.plot(pair[1][0],pair[1][1], 'b+', markersize=15)
         plt.plot([pair[0][0],pair[1][0]], [pair[0][1], pair[1][1]])
     plt.show()
-def plot_threshold_score():
-    pass
+    
+    return pair_array
+
+
+    
+def plot_threshold_score(all_image_pairs,threshold_list = [10, 20, 30, 40, 50]):
+    threshold_count_dict = {}
+    for threshold in threshold_list:
+        threshold_count_dict[threshold] = 0
+    
+
+    
+    for (image_label, image_predicted) in all_image_pairs:
+          
+        pair_array = findNN(image_label, image_predicted)
+        for pair in pair_array:
+            for threshold in threshold_list:
+                if (np.sqrt(  (pair[0][0] - pair[1][0])**2 + (pair[0][1] - pair[1][1])**2  ) < threshold):
+                    threshold_count_dict[threshold] += 1
+    
+    x = threshold_list
+    y = [threshold_count_dict[i] for i in threshold_count_dict.keys()]
+    print(x)
+    print(y)
+    
+    plt.style.use('ggplot')
+    plt.figure(figsize=(10,5))
+    plt.title("distance threshold score")
+    plt.xlabel("threshold")
+    plt.ylabel("counts")
+    plt.plot(x, y,'-',label="CSL model")
+    
+    plt.plot(x,y,'b^-')
+    plt.legend()
+    plt.grid(True)
+    plt.show()
+    
+    
     
 '''
 TODO: test dice coefficient
@@ -118,7 +154,7 @@ class DiceCoefficient:
     
 if __name__ == '__main__':
     dataset = OurDataLoader(data_dir=r'dataset', task_type = 'both', transform=image_transform(p=1), pose_sigma = 5, normalize_heatmap = True)
-    train_loader, validation_loader = train_val_dataset(dataset, validation_split = 0.3, train_batch_size = 2, valid_batch_size = 2, shuffle_dataset = True)
+    train_loader, validation_loader = train_val_dataset(dataset, validation_split = 0.0, train_batch_size = 3, valid_batch_size = 2, shuffle_dataset = True)
     
     
     print("train_batchs: " + str(len(train_loader)))
@@ -128,27 +164,69 @@ if __name__ == '__main__':
     
     # Usage Example:
     num_epochs = 1
+    test_list = []
     for epoch in range(num_epochs):
         # Train:
-
+        
         print("train set:")
         for batch_index, (image, labels) in enumerate(train_loader):
             print('Epoch: ', epoch, '| Batch_index: ', batch_index, '| image: ',image.shape, '| labels: ', labels.shape)
-            break
+
+            imags_label = labels[0,:,:,4].view(labels[0].shape[0], labels[0].shape[1]).numpy()
+            imags_predict = np.roll(imags_label, 20, axis=0) 
+            imags_predict = np.roll(imags_predict, 10, axis=1) 
+            test_list.append((imags_label, imags_predict))
+            
+            
+            imags_label_1 = labels[2,:,:,4].view(labels[1].shape[0], labels[1].shape[1]).numpy()
+            imags_predict_1 = np.roll(imags_label_1, 10, axis=0) 
+            imags_predict_1 = np.roll(imags_predict_1, 0, axis=1) 
+            test_list.append((imags_label_1, imags_predict_1))
+            '''
+            fig=plt.figure(figsize=(12, 6))
+            fig.add_subplot(6,4,1)
+            plt.imshow(image[0].view(image[0].shape[0], image[0].shape[1], image[0].shape[2]).permute(1, 2, 0))
+            
+            fig.add_subplot(6,4,2)
+            plt.imshow(labels[0,:,:,4].view(labels[0].shape[0], labels[0].shape[1]))
+            
+            fig.add_subplot(6,4,3)
+            plt.imshow(labels[0,:,:,5].view(labels[0].shape[0], labels[0].shape[1]))
+            
+            fig.add_subplot(6,4,4)
+            plt.imshow(labels[0,:,:,6].view(labels[0].shape[0], labels[0].shape[1]))
+
+            fig.add_subplot(6,4,5)
+            plt.imshow(labels[0,:,:,7].view(labels[0].shape[0], labels[0].shape[1]))
+            
+            
+            fig.add_subplot(6,4,6)
+            plt.imshow(image[1].view(image[0].shape[0], image[0].shape[1], image[0].shape[2]).permute(1, 2, 0))
+            
+            fig.add_subplot(6,4,7)
+            plt.imshow(labels[1,:,:,4].view(labels[0].shape[0], labels[0].shape[1]))
+            
+            fig.add_subplot(6,4,8)
+            plt.imshow(labels[1,:,:,5].view(labels[0].shape[0], labels[0].shape[1]))
+            
+            fig.add_subplot(6,4,9)
+            plt.imshow(labels[1,:,:,6].view(labels[0].shape[0], labels[0].shape[1]))
+
+            fig.add_subplot(6,4,10)
+            plt.imshow(labels[1,:,:,7].view(labels[0].shape[0], labels[0].shape[1]))
+            plt.show()
+            '''
+            #test_list.append((labels[0,:,:,4].numpy(), 1))
+            #findNN(imags_label, imags_predict)
+
+        plot_threshold_score(test_list)
             
         # Valid
         print("valid set")
         for batch_index, (image, labels) in enumerate(validation_loader):
             print('Epoch: ', epoch, '| Batch_index: ', batch_index, '| image: ',image.shape, '| labels: ', labels.shape)
             
-            imags_label = labels[0,:,:,5].view(labels[0].shape[0], labels[0].shape[1]).numpy()
-            #imags_predict = labels[1,:,:,4].view(labels[0].shape[0], labels[0].shape[1]).numpy()
-            #imags_original = image[0].view(image[0].shape[0], image[0].shape[1], image[0].shape[2]).permute(1, 2, 0)
-            imags_predict = np.roll(imags_label, 50, axis=0) 
-            imags_predict = np.roll(imags_predict, 50, axis=1) 
-            findNN(imags_label, imags_predict)
-                
-            break
+
             #fig=plt.figure(figsize=(12, 6))
             #fig.add_subplot(2,3,1)
             #plt.imshow(image[0].view(image[0].shape[0], image[0].shape[1], image[0].shape[2]).permute(1, 2, 0))
