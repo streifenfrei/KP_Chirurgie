@@ -339,6 +339,14 @@ def train_val_dataset(dataset, validation_split = 0.2, train_batch_size = 16, va
                                                     sampler=valid_sampler)
     return train_loader, validation_loader
     
+def prepare_batch(batch, segmentation_classes, localisation_classes):
+    inputs, target = batch
+    target = target.permute(0, 3, 1, 2)
+    target_segmentation, target_localisation = torch.split(target, [segmentation_classes, localisation_classes], dim=1)
+    target_segmentation_np = np.array([np.argmax(a, axis=0) for a in target_segmentation.numpy()])
+    target_segmentation = torch.tensor(target_segmentation_np)
+    return inputs, (target_segmentation, target_localisation)  
+    
 if __name__ == '__main__':
 
     dataset = OurDataLoader(data_dir=r'dataset', task_type = 'both', transform=image_transform(p=1), pose_sigma = 5, normalize_heatmap = True)
@@ -357,7 +365,13 @@ if __name__ == '__main__':
         print("train set:")
         for batch_index, (image, labels) in enumerate(train_loader):
             print('Epoch: ', epoch, '| Batch_index: ', batch_index, '| image: ',image.shape, '| labels: ', labels.shape)
-
+            inputs, (target_segmentation, target_localisation) = prepare_batch((image, labels),4,4)
+            for i in target_segmentation.numpy()[0]:
+                print(i)
+            print(target_segmentation.numpy())
+            
+            #print(target_localisation.shape)
+            
             
         # Valid
         print("valid set")
