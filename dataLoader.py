@@ -7,6 +7,9 @@ import json
 from scipy.ndimage.filters import gaussian_filter
 from torch.utils.data.sampler import SubsetRandomSampler
 
+from torch.utils.data import ConcatDataset
+
+
 
 # for image augmentation
 from albumentations import (
@@ -16,8 +19,10 @@ from albumentations import (
     Compose,
     PadIfNeeded,
     RandomCrop,
-    CenterCrop
-    
+    CenterCrop,
+    RandomBrightnessContrast,
+    Blur,
+    HueSaturationValue
 )
 
 # for transforming base64 to image array
@@ -123,17 +128,19 @@ def find_all_json(json_dir):
     '''
     find all the data in data dir
     '''
-    all_json_names = glob.glob(json_dir+'/*.json')
+    all_json_names = glob.glob(json_dir+'/**/*.json', recursive=True)
     return all_json_names
 
 
 def image_transform(p=1):
     return Compose([
-        PadIfNeeded(min_height=100, min_width=100, p=0.5),
+        #PadIfNeeded(min_height=100, min_width=100, p=0.5),
         RandomCrop(height=512, width=960, p=1),
         VerticalFlip(p=0.5),
         HorizontalFlip(p=0.5),
-        #RandomAffine(30)
+        RandomBrightnessContrast(p=0.5),
+        Blur(p=0.5),
+        HueSaturationValue(p=0.5)
     ], p=p)
     
 
@@ -148,12 +155,26 @@ def img_b64_to_arr(img_b64):
     img_arr = np.array(PIL.Image.open(f))
     return img_arr
 
+def img_data_to_pil(img_data):
+    f = io.BytesIO()
+    f.write(img_data)
+    img_pil = PIL.Image.open(f)
+    return img_pil
 
-# TODO: test how it works    
+    
 def load_image(json_file):
     data = json.load(open(json_file))
     imageData = data.get('imageData')
-    img = img_b64_to_arr(imageData)
+    
+    if imageData is None:
+        img_name = json_file[0:-4] + 'png'
+        with open(img_name, "rb") as f:
+            b = io.BytesIO(f.read())
+            img_pil = PIL.Image.open(b)
+            img = np.array(img_pil)
+    else:
+        img = img_b64_to_arr(imageData)
+        
     shapes = data['shapes']
     return img, shapes
 
@@ -316,27 +337,52 @@ def load_both(img_shape, shapes, class_name_to_id, landmark_name_to_id, pose_sig
         seg_image = np.dstack((seg_image,seg_image_cls))
     return seg_image 
 
-def train_val_dataset(dataset, validation_split = 0.2, train_batch_size = 16, valid_batch_size = 16, shuffle_dataset = True):
+def train_val_dataset(dataset_list, validation_split = 0.2, train_batch_size = 16, valid_batch_size = 16, shuffle_dataset = True):
 
     random_seed= 42
     # Creating data indices for training and validation splits:
-    dataset_size = len(dataset)
+    
+    if isinstance(dataset_list, list):
+        dataset_size = 0
+        for dataset in dataset_list:
+            dataset_size += len(dataset)
 
-    indices = list(range(dataset_size))
-    split = int(np.floor(validation_split * dataset_size))
-    if shuffle_dataset :
-        np.random.seed(random_seed)
-        np.random.shuffle(indices)
-    train_indices, val_indices = indices[split:], indices[:split]
+        indices = list(range(dataset_size))
+        split = int(np.floor(validation_split * dataset_size))
+        if shuffle_dataset :
+            np.random.seed(random_seed)
+            np.random.shuffle(indices)
+        train_indices, val_indices = indices[split:], indices[:split]
 
-    # Creating PT data samplers and loaders:
-    train_sampler = SubsetRandomSampler(train_indices)
-    valid_sampler = SubsetRandomSampler(val_indices)
+        # Creating PT data samplers and loaders:
+        train_sampler = SubsetRandomSampler(train_indices)
+        valid_sampler = SubsetRandomSampler(val_indices)
 
-    train_loader = torch.utils.data.DataLoader(dataset, batch_size=train_batch_size, 
-                                               sampler=train_sampler)
-    validation_loader = torch.utils.data.DataLoader(dataset, batch_size=valid_batch_size,
-                                                    sampler=valid_sampler)
+        train_loader = torch.utils.data.DataLoader(ConcatDataset(dataset_list), batch_size=train_batch_size, 
+                                                   sampler=train_sampler)
+        validation_loader = torch.utils.data.DataLoader(ConcatDataset(dataset_list), batch_size=valid_batch_size,
+                                                        sampler=valid_sampler)
+    else:
+        dataset = dataset_list
+        random_seed= 42
+        # Creating data indices for training and validation splits:
+        dataset_size = len(dataset)
+
+        indices = list(range(dataset_size))
+        split = int(np.floor(validation_split * dataset_size))
+        if shuffle_dataset :
+            np.random.seed(random_seed)
+            np.random.shuffle(indices)
+        train_indices, val_indices = indices[split:], indices[:split]
+
+        # Creating PT data samplers and loaders:
+        train_sampler = SubsetRandomSampler(train_indices)
+        valid_sampler = SubsetRandomSampler(val_indices)
+
+        train_loader = torch.utils.data.DataLoader(dataset, batch_size=train_batch_size, 
+                                                   sampler=train_sampler)
+        validation_loader = torch.utils.data.DataLoader(dataset, batch_size=valid_batch_size,
+                                                        sampler=valid_sampler)
     return train_loader, validation_loader
     
 def prepare_batch(batch, segmentation_classes, localisation_classes):
@@ -349,8 +395,13 @@ def prepare_batch(batch, segmentation_classes, localisation_classes):
     
 if __name__ == '__main__':
 
-    dataset = OurDataLoader(data_dir=r'dataset', task_type = 'both', transform=image_transform(p=1), pose_sigma = 5, normalize_heatmap = True)
-    train_loader, validation_loader = train_val_dataset(dataset, validation_split = 0.3, train_batch_size = 2, valid_batch_size = 2, shuffle_dataset = True)
+    dataset1 = OurDataLoader(data_dir=r'data/Data1', task_type = 'both', transform=image_transform(p=1), pose_sigma = 5, normalize_heatmap = True)
+    dataset2 = OurDataLoader(data_dir=r'data/Data2', task_type = 'both', transform=image_transform(p=1), pose_sigma = 5, normalize_heatmap = True)
+    
+    # load 1 dataset, or as list: both are ok 
+    #train_loader, validation_loader = train_val_dataset(dataset2, validation_split = 0.3, train_batch_size = 2, valid_batch_size = 2, shuffle_dataset = True)
+    #train_loader, validation_loader = train_val_dataset([dataset2], validation_split = 0.3, train_batch_size = 2, valid_batch_size = 2, shuffle_dataset = True)
+    train_loader, validation_loader = train_val_dataset([dataset1, dataset2], validation_split = 0.3, train_batch_size = 2, valid_batch_size = 2, shuffle_dataset = True)
     
     
     print("train_batchs: " + str(len(train_loader)))
@@ -365,10 +416,10 @@ if __name__ == '__main__':
         print("train set:")
         for batch_index, (image, labels) in enumerate(train_loader):
             print('Epoch: ', epoch, '| Batch_index: ', batch_index, '| image: ',image.shape, '| labels: ', labels.shape)
-            inputs, (target_segmentation, target_localisation) = prepare_batch((image, labels),4,4)
-            for i in target_segmentation.numpy()[0]:
-                print(i)
-            print(target_segmentation.numpy())
+            #inputs, (target_segmentation, target_localisation) = prepare_batch((image, labels),4,4)
+            #for i in target_segmentation.numpy()[0]:
+            #    print(i)
+            #print(target_segmentation.numpy())
             
             #print(target_localisation.shape)
             
@@ -378,7 +429,7 @@ if __name__ == '__main__':
         for batch_index, (image, labels) in enumerate(validation_loader):
             print('Epoch: ', epoch, '| Batch_index: ', batch_index, '| image: ',image.shape, '| labels: ', labels.shape)
             
-            '''
+            
             fig=plt.figure(figsize=(12, 6))
             fig.add_subplot(3,4,1)
             plt.imshow(image[0].view(image[0].shape[0], image[0].shape[1], image[0].shape[2]).permute(1, 2, 0))
@@ -403,7 +454,7 @@ if __name__ == '__main__':
             plt.imshow(labels[0,:,:,7].view(labels[0].shape[0], labels[0].shape[1]))
             plt.show()
             break
-            '''
+            
         #break
 
 
