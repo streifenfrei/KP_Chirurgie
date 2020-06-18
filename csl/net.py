@@ -116,74 +116,6 @@ class CSLNet(nn.Module):
         n, c, w, h = list(mask.shape)
         return nn.functional.pad(mask.reshape(n * c, 1, w, h), [1, 1, 1, 1], value=1)
 
-    def visualize_conv_filter(self, writer: SummaryWriter, global_step):
-        # initial
-        mask = self._reshape_filter_mask(self.conv1.weight)
-        writer.add_images("Encoder/Initial", mask, global_step=global_step)
-        # enc1
-        count = 1
-        for child in self.encoding_layer1.children():
-            if isinstance(child, Bottleneck):
-                mask = self._reshape_filter_mask(child.conv2.weight)
-                writer.add_images("Encoder/1/{0}".format(str(count)), mask, global_step=global_step)
-                count += 1
-        # enc2
-        count = 1
-        for child in self.encoding_layer2.children():
-            if isinstance(child, Bottleneck):
-                mask = self._reshape_filter_mask(child.conv2.weight)
-                writer.add_images("Encoder/2/{0}".format(str(count)), mask, global_step=global_step)
-                count += 1
-        # enc3
-        count = 1
-        for child in self.encoding_layer3.children():
-            if isinstance(child, Bottleneck):
-                mask = self._reshape_filter_mask(child.conv2.weight)
-                writer.add_images("Encoder/3/{0}".format(str(count)), mask, global_step=global_step)
-                count += 1
-        # enc4
-        count = 1
-        for child in self.encoding_layer4.children():
-            if isinstance(child, Bottleneck):
-                mask = self._reshape_filter_mask(child.conv2.weight)
-                writer.add_images("Encoder/4/{0}".format(str(count)), mask, global_step=global_step)
-                count += 1
-        # dec1
-        mask = self._reshape_filter_mask(self.decoding_layer1_1.conv1.weight)
-        writer.add_images("Decoder/1/1", mask, global_step=global_step)
-        mask = self._reshape_filter_mask(self.decoding_layer1_1.conv2.weight)
-        writer.add_images("Decoder/1/2", mask, global_step=global_step)
-        mask = self._reshape_filter_mask(self.decoding_layer1_1.proj.weight)
-        writer.add_images("Decoder/1/projection", mask, global_step=global_step)
-        # dec2
-        mask = self._reshape_filter_mask(self.decoding_layer2_1.conv1.weight)
-        writer.add_images("Decoder/2/1", mask, global_step=global_step)
-        mask = self._reshape_filter_mask(self.decoding_layer2_1.conv2.weight)
-        writer.add_images("Decoder/2/2", mask, global_step=global_step)
-        mask = self._reshape_filter_mask(self.decoding_layer2_1.proj.weight)
-        writer.add_images("Decoder/2/projection", mask, global_step=global_step)
-        # dec3
-        mask = self._reshape_filter_mask(self.decoding_layer3_1.conv1.weight)
-        writer.add_images("Decoder/3/1", mask, global_step=global_step)
-        mask = self._reshape_filter_mask(self.decoding_layer3_1.conv2.weight)
-        writer.add_images("Decoder/3/2", mask, global_step=global_step)
-        mask = self._reshape_filter_mask(self.decoding_layer3_1.proj.weight)
-        writer.add_images("Decoder/3/projection", mask, global_step=global_step)
-        # dec1
-        mask = self._reshape_filter_mask(self.decoding_layer4.conv1.weight)
-        writer.add_images("Decoder/4/1", mask, global_step=global_step)
-        mask = self._reshape_filter_mask(self.decoding_layer4.conv2.weight)
-        writer.add_images("Decoder/4/2", mask, global_step=global_step)
-        mask = self._reshape_filter_mask(self.decoding_layer4.proj.weight)
-        writer.add_images("Decoder/4/projection", mask, global_step=global_step)
-        # final
-        mask = self._reshape_filter_mask(next(self.segmentation_layer.children()).weight)
-        writer.add_images("Out/segmentation", mask, global_step=global_step)
-        mask = self._reshape_filter_mask(next(self.pre_localisation_layer.children()).weight)
-        writer.add_images("Out/pre localisation", mask, global_step=global_step)
-        mask = self._reshape_filter_mask(next(self.localisation_layer.children()).weight)
-        writer.add_images("Out/localisation", mask, global_step=global_step)
-
     def visualize(self, dataset, device='cpu', batch_size=2):
         loader = train_val_dataset(dataset, validation_split=0, train_batch_size=batch_size,
                                    valid_batch_size=batch_size, shuffle_dataset=True)[0]
@@ -415,7 +347,6 @@ class Training:
                         'epoch': epoch + 1,
                     }, save_file)
                     writer.flush()
-                    self.model.visualize_conv_filter(writer, epoch)
                     print("saved model.")
                 print("\n")
         except KeyboardInterrupt:
