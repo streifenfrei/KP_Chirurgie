@@ -28,7 +28,6 @@ class CSLNet(nn.Module):
 
     def __init__(self,
                  encoder: Encoder = Encoder.res_net_50,
-                 segmentation_classes=4,
                  localisation_classes=4):
         super(CSLNet, self).__init__()
         self.inplanes = 64
@@ -60,13 +59,12 @@ class CSLNet(nn.Module):
         self.decoding_layer3_2 = self._make_layer(128, sampling=self._Sampling.none_norm)
         self.decoding_layer4 = self._make_layer(64, sampling=self._Sampling.up)
 
-        self.segmentation_layer = self._make_layer(segmentation_classes, sampling=self._Sampling.none_relu,
+        self.segmentation_layer = self._make_layer(1, sampling=self._Sampling.none_relu,
                                                    update_planes=False)
         self.pre_localisation_layer = self._make_layer(32, sampling=self._Sampling.none_relu)
-        self.inplanes = 32 + segmentation_classes
+        self.inplanes = 33
         self.localisation_layer = self._make_layer(localisation_classes, sampling=self._Sampling.none_relu)
 
-        self.segmentation_classes = segmentation_classes
         self.localisation_classes = localisation_classes
 
     def _make_bottleneck_block(self, planes, downsample=False, stride=1):
@@ -205,8 +203,7 @@ class Training:
 
         class SegmentationLoss(IntEnum):
             cross_entropy = 0
-            weighted_cross_entropy = 1
-            dice = 2
+            dice = 1
 
         class _DiceLoss:
 
@@ -233,9 +230,8 @@ class Training:
 
                 return dice_total
 
-        def __init__(self, segmentation_loss: SegmentationLoss, device, lambdah=1, wce_array=np.array([1, 3, 3, 0.01])):
+        def __init__(self, segmentation_loss: SegmentationLoss, lambdah=1):
             self.segmentation_loss = segmentation_loss
-            self.wce_weight = torch.from_numpy(wce_array).float().to(device)
             self.lambdah = lambdah
 
         def __call__(self, output, target):
@@ -247,9 +243,7 @@ class Training:
             batch_size, localisation_classes, height, width = output_localisation.shape
             # segmentation
             if self.segmentation_loss == self.SegmentationLoss.cross_entropy:
-                segmentation_loss_function = nn.CrossEntropyLoss(reduction='mean')
-            elif self.segmentation_loss == self.SegmentationLoss.weighted_cross_entropy:
-                segmentation_loss_function = nn.CrossEntropyLoss(weight=self.wce_weight, reduction='mean')
+                segmentation_loss_function = nn.BCELoss(reduction='mean')
             elif self.segmentation_loss == self.SegmentationLoss.dice:
                 segmentation_loss_function = self._DiceLoss()
             else:
@@ -265,30 +259,15 @@ class Training:
     def _prepare_batch(self, batch):
         inputs, target = batch
         target = target.permute(0, 3, 1, 2)
-        target_segmentation, target_localisation = torch.split(target, [self.model.segmentation_classes,
-                                                                        self.model.localisation_classes],
-                                                               dim=1)
-        if self.segmentation_loss != Training.LossFunction.SegmentationLoss.dice:
-            target_segmentation_np = np.array([np.argmax(a, axis=0) for a in target_segmentation.numpy()])
-            target_segmentation = torch.tensor(target_segmentation_np)
+        target_segmentation, target_localisation = torch.split(target, [1, self.model.localisation_classes], dim=1)
         return inputs, (target_segmentation, target_localisation)
 
-    def _prepare_datasets(self):
-        train_loader, val_loader = self.datasets
-        new_train_loader = []
-        new_val_loader = []
-        for batch in train_loader:
-            new_train_loader.append(self._prepare_batch(batch))
-        for batch in val_loader:
-            new_val_loader.append(self._prepare_batch(batch))
-        return new_train_loader, new_val_loader
-
     def _get_loss(self, batch):
-        inputs, targets = batch
+        inputs, targets = self._prepare_batch(batch)
         inputs = inputs.to(self.device)
         output = self.model(inputs)
         targets = (targets[0].to(self.device), targets[1].to(self.device))
-        loss_function = self.LossFunction(self.segmentation_loss, self.device, self.lambdah)
+        loss_function = self.LossFunction(self.segmentation_loss, self.lambdah)
         return loss_function(output, targets)
 
     def _train_step(self, epoch, index, batch):
@@ -312,7 +291,7 @@ class Training:
     def start(self):
         writer = SummaryWriter(log_dir=os.path.join(self.workspace, 'tensorboard'))
         try:
-            train_loader, val_loader = self._prepare_datasets()
+            train_loader, val_loader = self.datasets
             save_file = os.path.join(self.workspace, 'csl.pth')
             for epoch in range(self.start_epoch, self.max_epochs):
                 # training
