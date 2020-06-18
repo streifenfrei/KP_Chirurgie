@@ -142,7 +142,7 @@ def image_transform(p=1):
         RandomBrightnessContrast(p=0.5),
         Blur(p=0.5),
         HueSaturationValue(p=0.5),
-        ShiftScaleRotate(shift_limit=0, scale_limit=(0.0,0.2),rotate_limit=0)
+        ShiftScaleRotate(scale_limit=0.1,rotate_limit=30, border_mode=0)
     ], p=p)
     
 
@@ -260,9 +260,9 @@ def load_mask(img_shape, shapes, class_name_to_id, seg_type):
         seg_image[cls == class_name_to_id['scissors']] = 1
         seg_image[cls == class_name_to_id['needle_holder']] = 1
         seg_image = np.reshape(seg_image,(seg_image.shape[0], seg_image.shape[1], 1))
-        seg_image_bg = np.zeros_like(seg_image, dtype = float)
-        seg_image_bg[cls == class_name_to_id['background']] = 1
-        seg_image = np.dstack((seg_image,seg_image_bg))
+        #seg_image_bg = np.zeros_like(seg_image, dtype = float)
+        #seg_image_bg[cls == class_name_to_id['background']] = 1
+        #seg_image = np.dstack((seg_image,seg_image_bg))
         
     else:
         seg_image[cls == 1] = 1 #first channel: grapser
@@ -334,9 +334,9 @@ def load_both(img_shape, shapes, class_name_to_id, landmark_name_to_id, pose_sig
         seg_image[cls_seg == class_name_to_id['scissors']] = 1
         seg_image[cls_seg == class_name_to_id['needle_holder']] = 1
         seg_image = np.reshape(seg_image,(seg_image.shape[0], seg_image.shape[1], 1))
-        seg_image_bg = np.zeros_like(seg_image, dtype = float)
-        seg_image_bg[cls_seg == class_name_to_id['background']] = 1
-        seg_image = np.dstack((seg_image,seg_image_bg))
+        #seg_image_bg = np.zeros_like(seg_image, dtype = float)
+        #seg_image_bg[cls_seg == class_name_to_id['background']] = 1
+        #seg_image = np.dstack((seg_image,seg_image_bg))
 
     else:
         seg_image[cls_seg == 1] = 1 #first channel: grapser
@@ -451,11 +451,12 @@ if __name__ == '__main__':
 
             fig.add_subplot(3,3,5)
             plt.imshow(labels[0,:,:,3].view(labels[0].shape[0], labels[0].shape[1]))
-       
+            '''
             fig.add_subplot(3,3,6)
             plt.imshow(labels[0,:,:,4].view(labels[0].shape[0], labels[0].shape[1]))
             fig.add_subplot(3,3,7)
             plt.imshow(labels[0,:,:,5].view(labels[0].shape[0], labels[0].shape[1]))
+            '''
             plt.show()
             break
 
