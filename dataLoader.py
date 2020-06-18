@@ -10,7 +10,6 @@ from torch.utils.data.sampler import SubsetRandomSampler
 from torch.utils.data import ConcatDataset
 
 
-
 # for image augmentation
 from albumentations import (
     HorizontalFlip,
@@ -22,7 +21,8 @@ from albumentations import (
     CenterCrop,
     RandomBrightnessContrast,
     Blur,
-    HueSaturationValue
+    HueSaturationValue,
+    ShiftScaleRotate
 )
 
 # for transforming base64 to image array
@@ -51,7 +51,7 @@ landmark_name_to_id_ = {
 }
 
 class OurDataLoader(Dataset):
-    def __init__(self, data_dir, transform=None, mode='train', task_type='both', class_name_to_id = class_name_to_id_, landmark_name_to_id = landmark_name_to_id_, pose_sigma = 7, normalize_heatmap = True): 
+    def __init__(self, data_dir, transform=None, mode='train', task_type='both', class_name_to_id = class_name_to_id_, landmark_name_to_id = landmark_name_to_id_, pose_sigma = 7, normalize_heatmap = True, seg_type = 'binary'): 
         '''
         constructor of OurDataLoader
         @ param:
@@ -68,6 +68,7 @@ class OurDataLoader(Dataset):
         self.landmark_name_to_id = landmark_name_to_id
         self.pose_sigma = pose_sigma
         self.normalize_heatmap = normalize_heatmap
+        self.seg_type = seg_type
         
     def __len__(self):
         '''
@@ -83,7 +84,7 @@ class OurDataLoader(Dataset):
 
         image, shapes = load_image(data_name)
         if self.task_type == 'segmentation':  # not binary but 4 channels: 4 instruments
-            mask = load_mask(image.shape, shapes, self.class_name_to_id)
+            mask = load_mask(image.shape, shapes, self.class_name_to_id, self.seg_type)
 
             data = {"image": image, "mask": mask}
             augmented = self.transform(**data)
@@ -108,7 +109,7 @@ class OurDataLoader(Dataset):
                 
         # TODO: how to deal with this part?
         elif self.task_type == 'both':
-            mask = load_both(image.shape, shapes, self.class_name_to_id, self.landmark_name_to_id, self.pose_sigma, self.normalize_heatmap)
+            mask = load_both(image.shape, shapes, self.class_name_to_id, self.landmark_name_to_id, self.pose_sigma, self.normalize_heatmap, self.seg_type)
             #print(image.shape)
             #print(mask.shape)
             data = {"image": image, "mask": mask}
@@ -140,7 +141,8 @@ def image_transform(p=1):
         HorizontalFlip(p=0.5),
         RandomBrightnessContrast(p=0.5),
         Blur(p=0.5),
-        HueSaturationValue(p=0.5)
+        HueSaturationValue(p=0.5),
+        ShiftScaleRotate(shift_limit=0, scale_limit=(0.0,0.2),rotate_limit=0)
     ], p=p)
     
 
@@ -244,7 +246,7 @@ def shapes_to_label(img_shape, shapes, label_name_to_value, task_type):
     return cls, ins
 #==================================#
 # load the mask   
-def load_mask(img_shape, shapes, class_name_to_id):
+def load_mask(img_shape, shapes, class_name_to_id, seg_type):
     cls, ins = shapes_to_label(
                 img_shape=img_shape,
                 shapes=shapes,
@@ -253,14 +255,24 @@ def load_mask(img_shape, shapes, class_name_to_id):
             )
     seg_image = np.zeros_like(ins) 
     
-    seg_image[cls == 1] = 1 #first channel: grapser
-    seg_image = np.reshape(seg_image,(seg_image.shape[0], seg_image.shape[1], 1))
-    for each_class in class_name_to_id:
-        if each_class != 'grasper':
-            seg_image_cls = np.zeros_like(ins)
-            seg_image_cls[cls == class_name_to_id[each_class]] = 1
-            seg_image_cls = np.reshape(seg_image_cls,(1, seg_image_cls.shape[0], seg_image_cls.shape[1]))
-            seg_image = np.dstack((seg_image,seg_image_cls))
+    if(seg_type == 'binary'):
+        seg_image[cls == class_name_to_id['grasper']] = 1
+        seg_image[cls == class_name_to_id['scissors']] = 1
+        seg_image[cls == class_name_to_id['needle_holder']] = 1
+        seg_image = np.reshape(seg_image,(seg_image.shape[0], seg_image.shape[1], 1))
+        seg_image_bg = np.zeros_like(seg_image, dtype = float)
+        seg_image_bg[cls == class_name_to_id['background']] = 1
+        seg_image = np.dstack((seg_image,seg_image_bg))
+        
+    else:
+        seg_image[cls == 1] = 1 #first channel: grapser
+        seg_image = np.reshape(seg_image,(seg_image.shape[0], seg_image.shape[1], 1))
+        for each_class in class_name_to_id:
+            if each_class != 'grasper':
+                seg_image_cls = np.zeros_like(ins)
+                seg_image_cls[cls == class_name_to_id[each_class]] = 1
+                seg_image_cls = np.reshape(seg_image_cls,(1, seg_image_cls.shape[0], seg_image_cls.shape[1]))
+                seg_image = np.dstack((seg_image,seg_image_cls))
     return seg_image
 
 def max_gaussian_help(cls, pose_sigma, landmark_id):    
@@ -301,7 +313,7 @@ def load_pose(img_shape, shapes, landmark_name_to_id, pose_sigma, normalize_heat
         
     return seg_image
     
-def load_both(img_shape, shapes, class_name_to_id, landmark_name_to_id, pose_sigma, normalize_heatmap):
+def load_both(img_shape, shapes, class_name_to_id, landmark_name_to_id, pose_sigma, normalize_heatmap, seg_type):
 
     cls_seg, ins_seg = shapes_to_label(
                 img_shape=img_shape,
@@ -317,15 +329,24 @@ def load_both(img_shape, shapes, class_name_to_id, landmark_name_to_id, pose_sig
             )
     seg_image = np.zeros_like(ins_seg, dtype = float)
     
-    seg_image[cls_seg == 1] = 1 #first channel: grapser
-    seg_image = np.reshape(seg_image,(seg_image.shape[0], seg_image.shape[1], 1))
-    
-    for each_class in class_name_to_id:
-        if each_class != 'grasper':
-            seg_image_cls = np.zeros_like(ins_seg)
-            seg_image_cls[cls_seg == class_name_to_id[each_class]] = 1
-            seg_image_cls = np.reshape(seg_image_cls,(seg_image_cls.shape[0], seg_image_cls.shape[1], 1))
-            seg_image = np.dstack((seg_image,seg_image_cls))
+    if(seg_type == 'binary'):
+        seg_image[cls_seg == class_name_to_id['grasper']] = 1
+        seg_image[cls_seg == class_name_to_id['scissors']] = 1
+        seg_image[cls_seg == class_name_to_id['needle_holder']] = 1
+        seg_image = np.reshape(seg_image,(seg_image.shape[0], seg_image.shape[1], 1))
+        seg_image_bg = np.zeros_like(seg_image, dtype = float)
+        seg_image_bg[cls_seg == class_name_to_id['background']] = 1
+        seg_image = np.dstack((seg_image,seg_image_bg))
+
+    else:
+        seg_image[cls_seg == 1] = 1 #first channel: grapser
+        seg_image = np.reshape(seg_image,(seg_image.shape[0], seg_image.shape[1], 1))
+        for each_class in class_name_to_id:
+            if each_class != 'grasper':
+                seg_image_cls = np.zeros_like(ins_seg)
+                seg_image_cls[cls_seg == class_name_to_id[each_class]] = 1
+                seg_image_cls = np.reshape(seg_image_cls,(seg_image_cls.shape[0], seg_image_cls.shape[1], 1))
+                seg_image = np.dstack((seg_image,seg_image_cls))
 
     for each_class in landmark_name_to_id:
         seg_image_cls = max_gaussian_help(cls_pose, pose_sigma, landmark_name_to_id[each_class])
@@ -395,8 +416,8 @@ def prepare_batch(batch, segmentation_classes, localisation_classes):
     
 if __name__ == '__main__':
 
-    dataset1 = OurDataLoader(data_dir=r'data/Data1', task_type = 'both', transform=image_transform(p=1), pose_sigma = 5, normalize_heatmap = True)
-    dataset2 = OurDataLoader(data_dir=r'data/Data2', task_type = 'both', transform=image_transform(p=1), pose_sigma = 5, normalize_heatmap = True)
+    dataset1 = OurDataLoader(data_dir=r'data/Data1', task_type = 'both', transform=image_transform(p=1), pose_sigma = 15, normalize_heatmap = True, seg_type = 'binary')
+    dataset2 = OurDataLoader(data_dir=r'data/Data2', task_type = 'both', transform=image_transform(p=1), pose_sigma = 15, normalize_heatmap = True, seg_type = 'binary')
     
     # load 1 dataset, or as list: both are ok 
     #train_loader, validation_loader = train_val_dataset(dataset2, validation_split = 0.3, train_batch_size = 2, valid_batch_size = 2, shuffle_dataset = True)
@@ -416,44 +437,41 @@ if __name__ == '__main__':
         print("train set:")
         for batch_index, (image, labels) in enumerate(train_loader):
             print('Epoch: ', epoch, '| Batch_index: ', batch_index, '| image: ',image.shape, '| labels: ', labels.shape)
-            #inputs, (target_segmentation, target_localisation) = prepare_batch((image, labels),4,4)
-            #for i in target_segmentation.numpy()[0]:
-            #    print(i)
-            #print(target_segmentation.numpy())
-            
-            #print(target_localisation.shape)
-            
-            
-        # Valid
-        print("valid set")
-        for batch_index, (image, labels) in enumerate(validation_loader):
-            print('Epoch: ', epoch, '| Batch_index: ', batch_index, '| image: ',image.shape, '| labels: ', labels.shape)
-            
             
             fig=plt.figure(figsize=(12, 6))
-            fig.add_subplot(3,4,1)
+            fig.add_subplot(3,3,1)
             plt.imshow(image[0].view(image[0].shape[0], image[0].shape[1], image[0].shape[2]).permute(1, 2, 0))
-            fig.add_subplot(3,4,2)
+            fig.add_subplot(3,3,2)
             plt.imshow(labels[0,:,:,0].view(labels[0].shape[0], labels[0].shape[1]))
-            fig.add_subplot(3,4,3)
+            fig.add_subplot(3,3,3)
             plt.imshow(labels[0,:,:,1].view(labels[0].shape[0], labels[0].shape[1]))
-            
-            fig.add_subplot(3,4,4)
+
+            fig.add_subplot(3,3,4)
             plt.imshow(labels[0,:,:,2].view(labels[0].shape[0], labels[0].shape[1]))
 
-            fig.add_subplot(3,4,5)
+            fig.add_subplot(3,3,5)
             plt.imshow(labels[0,:,:,3].view(labels[0].shape[0], labels[0].shape[1]))
        
-            fig.add_subplot(3,4,6)
+            fig.add_subplot(3,3,6)
             plt.imshow(labels[0,:,:,4].view(labels[0].shape[0], labels[0].shape[1]))
-            fig.add_subplot(3,4,7)
+            fig.add_subplot(3,3,7)
             plt.imshow(labels[0,:,:,5].view(labels[0].shape[0], labels[0].shape[1]))
+            plt.show()
+            break
+
+            '''
             fig.add_subplot(3,4,8)
             plt.imshow(labels[0,:,:,6].view(labels[0].shape[0], labels[0].shape[1]))
             fig.add_subplot(3,4,9)
             plt.imshow(labels[0,:,:,7].view(labels[0].shape[0], labels[0].shape[1]))
-            plt.show()
-            break
+
+            '''
+
+        # Valid
+        print("valid set")
+        for batch_index, (image, labels) in enumerate(validation_loader):
+            print('Epoch: ', epoch, '| Batch_index: ', batch_index, '| image: ',image.shape, '| labels: ', labels.shape)
+
             
         #break
 
