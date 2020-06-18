@@ -8,7 +8,7 @@ from dataLoader import image_transform, OurDataLoader
 # model
 localisation_classes = 4
 # optimizer
-learning_rate = 10e-2
+learning_rate = 10e-7
 momentum = 0.9  # for SGD
 # loss
 sigma = 5

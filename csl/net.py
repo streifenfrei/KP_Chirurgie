@@ -109,11 +109,6 @@ class CSLNet(nn.Module):
 
         return block
 
-    @staticmethod
-    def _reshape_filter_mask(mask: torch.Tensor):
-        n, c, w, h = list(mask.shape)
-        return nn.functional.pad(mask.reshape(n * c, 1, w, h), [1, 1, 1, 1], value=1)
-
     def visualize(self, dataset, device='cpu', batch_size=2):
         loader = train_val_dataset(dataset, validation_split=0, train_batch_size=batch_size,
                                    valid_batch_size=batch_size, shuffle_dataset=True)[0]
@@ -156,11 +151,12 @@ class CSLNet(nn.Module):
         x = enc2 = self.encoding_layer2(x)
         x = enc3 = self.encoding_layer3(x)
         x = self.encoding_layer4(x)
+
         # bottleneck
         x = self.bottleneck_layer(x)
+
         # decoder
         x = self.decoding_layer1_1(x)
-
         dec1_2 = self.decoding_layer1_2(enc3)
         x = x.add(dec1_2)
         x = self.decoding_layer2_1(x)
