@@ -222,11 +222,11 @@ class Training:
                 den2 = torch.sum(den2, dim=3)  # b,c,h
                 den2 = torch.sum(den2, dim=2)  # b,c
 
-                dice = 2 * (num / (den1 + den2))
+                dice = 2 * ((num + 10e-7) / (den1 + den2 + 10e-7))
 
                 dice_eso = dice[:, 0:-1]  # we ignore bg dice val, and take the fg
 
-                dice_total = 3 - torch.sum(dice_eso) / dice_eso.size(0)  # divide by batch_sz
+                dice_total = 1 - torch.sum(dice_eso) / dice_eso.size(0)  # divide by batch_sz
 
                 return dice_total
 
