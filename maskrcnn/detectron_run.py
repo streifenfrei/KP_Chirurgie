@@ -2,10 +2,13 @@ import torch, torchvision
 import cython
 import detectron2
 from detectron2.utils.logger import setup_logger, log_every_n
-
+import matplotlib.pyplot as plt
+from matplotlib.patches import Rectangle
+from PIL import Image
 import random
 import cv2
 from typing import List
+import math
 
 # import some common detectron2 utilities
 from detectron2 import model_zoo
@@ -173,8 +176,8 @@ def start_training(train_name:str="instruments_train", classes_list:List[str]=['
     cfg.MODEL.WEIGHTS = model_zoo.get_checkpoint_url("COCO-InstanceSegmentation/mask_rcnn_R_50_FPN_3x.yaml")  # Let training initialize from model zoo
     cfg.SOLVER.IMS_PER_BATCH = 2
     cfg.SOLVER.BASE_LR = 0.00025  # pick a good LR
-    cfg.SOLVER.MAX_ITER = 3000   # 300 iterations seems good enough for this toy dataset; you may need to train longer for a practical dataset
-    cfg.MODEL.ROI_HEADS.BATCH_SIZE_PER_IMAGE = 512   # faster, and good enough for this toy dataset (default: 512)
+    cfg.SOLVER.MAX_ITER = 400   # 300 iterations seems good enough for this toy dataset; you may need to train longer for a practical dataset
+    cfg.MODEL.ROI_HEADS.BATCH_SIZE_PER_IMAGE = 128   # faster, and good enough for this toy dataset (default: 512)
     cfg.MODEL.ROI_HEADS.NUM_CLASSES = len(classes_list)
 
     os.makedirs(cfg.OUTPUT_DIR, exist_ok=True)
@@ -183,14 +186,17 @@ def start_training(train_name:str="instruments_train", classes_list:List[str]=['
     trainer.train()
 
 
-def inference_on_trained_mode(instruments_metadata, path_valid_images, model_location = "model_final.pth" ):
+def inference_on_trained_mode(instruments_metadata, path_valid_images, model_location = "model_final_gpu.pth" ):
     cfg = get_cfg()
     cfg.MODEL.DEVICE = 'cpu'
-    # cfg.merge_from_file(model_zoo.get_config_file("COCO-InstanceSegmentation/mask_rcnn_R_50_FPN_3x.yaml"))
+    #cfg.merge_from_file(model_zoo.get_config_file("COCO-InstanceSegmentation/mask_rcnn_R_50_FPN_3x.yaml"))
+
     cfg.MODEL.WEIGHTS = os.path.join(cfg.OUTPUT_DIR, model_location)
-    cfg.MODEL.ROI_HEADS.SCORE_THRESH_TEST = 0.7  # set the testing threshold for this model
+    cfg.MODEL.ROI_HEADS.SCORE_THRESH_TEST = 0.4  # set the testing threshold for this model
     cfg.DATASETS.TEST = ("instruments_val",)
     predictor = DefaultPredictor(cfg)
+
+
 
     dataset_dicts = get_balloon_dicts(path_valid_images)
     # MetadataCatalog.get("instruments_val").set(thing_classes=classes_list)
@@ -209,23 +215,45 @@ def inference_on_trained_mode(instruments_metadata, path_valid_images, model_loc
                        scale=0.8,
                        instance_mode=ColorMode.IMAGE_BW  # remove the colors of unsegmented pixels
                        )
-        v = v.draw_instance_predictions(outputs["instances"])
-        cv2.imshow('image', v.get_image()[:, :, ::-1])
-        cv2.waitKey(0)
+        inference = outputs["instances"]
+        if len(inference._fields['pred_boxes'])>0:
+            for index, box in enumerate(inference._fields['pred_boxes']):
+                # Display the image
+                # if (inference._fields['pred_classes'].numpy()[index]) in [0, 1, 2, 19, 28]:
+                plt.imshow(im)
+                boxes = box.numpy()
+                print(f"{boxes=}")
+
+                #print(f"{class_predcited=}")
+                x1 = math.ceil(boxes[0])
+                y1 = math.ceil(boxes[1])
+                x2 = math.ceil(boxes[2])
+                y2 = math.ceil(boxes[3])
+                # crop_img = img[x1:y1, x2:y2]
+                # Add the patch to the Axes
+                # plt.show(crop_img)
+                plt.gca().add_patch(Rectangle((x1, y1), x2-x1, y2-y1, linewidth=1, edgecolor='r', facecolor='none'))
+                plt.show()
+        # v = v.draw_instance_predictions(outputs["instances"])
+        # cv2.imshow('image', v.get_image()[:, :, ::-1])
+        # cv2.waitKey(0)
+        pass
 
 
 def main():
     classes_list = ['scissors', 'needle_holder', 'grasper']
-    path_to_data = "../dataset/instruments/"
+    # path_to_data = "../dataset/instruments/"
+    path_to_data =  "/Users/chernykh_alexander/Yandex.Disk.localized/CloudTUD/Komp_CHRIRURGIE/instruments"
     instruments_metadata = register_dataset_and_metadata(path_to_data, classes_list)
-    path_to_training_data = "../dataset/instruments/train"
+    # path_to_training_data = "../dataset/instruments/train"
+    path_to_training_data = "/Users/chernykh_alexander/Yandex.Disk.localized/CloudTUD/Komp_CHRIRURGIE/instruments/train"
 
     # test_registration(instruments_metadata, path_to_training_data,
     #                   json_with_desription_name="dataset_registration_detectron2.json")
 
-    start_training(train_name="instruments_train", classes_list=['scissors', 'needle_holder', 'grasper'])
-
-    # inference_on_trained_mode(instruments_metadata,"/Users/chernykh_alexander/Yandex.Disk.localized/CloudTUD/Komp_CHRIRURGIE/instruments/val",  "model_final.pth")
+    #start_training(train_name="instruments_train", classes_list=['scissors', 'needle_holder', 'grasper'])
+    for i in range(10):
+        inference_on_trained_mode(instruments_metadata,"/Users/chernykh_alexander/Yandex.Disk.localized/CloudTUD/Komp_CHRIRURGIE/instruments/val",  "model_final_gpu.pth")
 
 if __name__ == "__main__":
     main()
