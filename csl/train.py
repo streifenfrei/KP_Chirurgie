@@ -3,15 +3,16 @@ from argparse import ArgumentParser
 
 import torch
 from csl.net import CSLNet, Training
+from torch.optim.lr_scheduler import *
 from dataLoader import image_transform, OurDataLoader
 
 # model
 localisation_classes = 4
 # optimizer
-learning_rate = 10e-7
+learning_rate = 10e-4
 momentum = 0.9  # for SGD
 # loss
-sigma = 5
+sigma = 6
 lambdah = 1
 
 
@@ -19,9 +20,11 @@ def init_model(save_file):
     model = CSLNet(localisation_classes=localisation_classes)
     model.load_state_dict(torch.load(os.path.abspath("weights/resnet50-19c8e357.pth")), strict=False)
     optimizer = torch.optim.Adam(model.parameters(), lr=learning_rate)
+    scheduler = ReduceLROnPlateau(optimizer, 'min')
     torch.save({
         'model_state_dict': model.state_dict(),
         'optimizer_state_dict': optimizer.state_dict(),
+        'scheduler_state_dict': scheduler.state_dict(),
         'epoch': 0,
     }, save_file)
 
@@ -41,6 +44,8 @@ def train_model(workspace, dataset, segmentation_loss, normalize_heatmap=False, 
     model, device = _load_model(checkpoint['model_state_dict'])
     optimizer = torch.optim.Adam(model.parameters(), lr=learning_rate)
     optimizer.load_state_dict(checkpoint['optimizer_state_dict'])
+    scheduler = ReduceLROnPlateau(optimizer, 'min')
+    scheduler.load_state_dict(checkpoint['scheduler_state_dict'])
     dataset = OurDataLoader(data_dir=dataset, task_type='both', transform=image_transform(p=1),
                             pose_sigma=sigma,
                             normalize_heatmap=normalize_heatmap,
@@ -49,7 +54,7 @@ def train_model(workspace, dataset, segmentation_loss, normalize_heatmap=False, 
     if device == 'cuda':
         del checkpoint
         torch.cuda.empty_cache()
-    training = Training(model, dataset, optimizer, segmentation_loss, start_epoch=epoch, workspace=workspace,
+    training = Training(model, dataset, optimizer, scheduler, segmentation_loss, start_epoch=epoch, workspace=workspace,
                         device=device, lambdah=lambdah, batch_size=batch_size)
     training.start()
 

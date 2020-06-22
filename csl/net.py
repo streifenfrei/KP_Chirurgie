@@ -4,6 +4,7 @@ from enum import IntEnum
 from torch.utils.tensorboard import SummaryWriter
 
 from csl.net_modules import *
+from torch.optim.lr_scheduler import *
 from dataLoader import train_val_dataset, OurDataLoader
 
 
@@ -59,8 +60,7 @@ class CSLNet(nn.Module):
         self.decoding_layer3_2 = self._make_layer(128, sampling=self._Sampling.none_norm)
         self.decoding_layer4 = self._make_layer(64, sampling=self._Sampling.up)
 
-        self.segmentation_layer = self._make_layer(1, sampling=self._Sampling.none_relu,
-                                                   update_planes=False)
+        self.segmentation_layer = conv3x3(self.inplanes, 1)
         self.pre_localisation_layer = self._make_layer(32, sampling=self._Sampling.none_relu)
         self.inplanes = 33
         self.localisation_layer = self._make_layer(localisation_classes, sampling=self._Sampling.none_relu)
@@ -177,9 +177,9 @@ class CSLNet(nn.Module):
 
 class Training:
 
-    def __init__(self, model: CSLNet, dataset: OurDataLoader, optimizer,
+    def __init__(self, model: CSLNet, dataset: OurDataLoader, optimizer, scheduler,
                  segmentation_loss, lambdah: int = 1,
-                 start_epoch: int = 0, max_epochs: int = 100000, save_rate: int = 10,
+                 start_epoch: int = 0, max_epochs: int = 100000, save_rate: int = 15,
                  workspace: str = '', device: str = "cpu", batch_size: int = 2, validation_split=0.3):
         self.model = model
         self.workspace = workspace
@@ -188,6 +188,7 @@ class Training:
         self.datasets = train_val_dataset(dataset, validation_split=validation_split, train_batch_size=batch_size,
                                           valid_batch_size=batch_size, shuffle_dataset=True)
         self.optimizer = optimizer
+        self.scheduler = scheduler
         self.segmentation_loss = segmentation_loss
         self.lambdah = lambdah
 
@@ -220,9 +221,9 @@ class Training:
 
                 dice = 2 * ((num + 10e-7) / (den1 + den2 + 10e-7))
 
-                dice_eso = dice[:, 0:-1]  # we ignore bg dice val, and take the fg
+                #dice_eso = dice[:, 0:-1]  # we ignore bg dice val, and take the fg
 
-                dice_total = 1 - torch.sum(dice_eso) / dice_eso.size(0)  # divide by batch_sz
+                dice_total = 1 - torch.sum(dice) / dice.size(0)  # divide by batch_sz, now for 1 layer
 
                 return dice_total
 
@@ -239,7 +240,7 @@ class Training:
             batch_size, localisation_classes, height, width = output_localisation.shape
             # segmentation
             if self.segmentation_loss == self.SegmentationLoss.cross_entropy:
-                segmentation_loss_function = nn.BCELoss(reduction='mean')
+                segmentation_loss_function = nn.BCEWithLogitsLoss(reduction='mean')
             elif self.segmentation_loss == self.SegmentationLoss.dice:
                 segmentation_loss_function = self._DiceLoss()
             else:
@@ -305,7 +306,9 @@ class Training:
                     losses.append(loss)
                     if epoch == self.start_epoch and index == 0:
                         writer.add_graph(self.model, batch[0].to(self.device))
-                writer.add_scalar('Loss/validation', sum(losses) / len(losses), epoch)
+                validation_loss = sum(losses) / len(losses)
+                writer.add_scalar('Loss/validation', validation_loss, epoch)
+                self.scheduler.step(validation_loss)
                 # saving
                 if not epoch % self.save_rate:
                     # move old model to older_models directory
@@ -319,6 +322,7 @@ class Training:
                     torch.save({
                         'model_state_dict': self.model.state_dict(),
                         'optimizer_state_dict': self.optimizer.state_dict(),
+                        'scheduler_state_dict': self.scheduler.state_dict(),
                         'epoch': epoch + 1,
                     }, save_file)
                     writer.flush()
