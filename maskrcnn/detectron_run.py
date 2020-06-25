@@ -150,8 +150,7 @@ def register_dataset_and_metadata(path_to_data:str,
 
 def test_registration(instruments_metadata: detectron2.data.catalog.Metadata,
                       path_to_training_data: str,
-                      json_with_desription_name: str = "dataset_registration_detectron2.json"
-                      ) -> None:
+                      json_with_desription_name: str = "dataset_registration_detectron2.json") -> None:
     """
     testing the registred dataset and its metadata by visualising the results of the annotation on the image
 
@@ -177,7 +176,7 @@ def test_registration(instruments_metadata: detectron2.data.catalog.Metadata,
 def start_training(train_name: str = "instruments_train",
                    classes_list: List[str] = ['scissors', 'needle_holder', 'grasper']):
     cfg = get_cfg()
-    cfg.MODEL.DEVICE = 'cpu'
+    cfg.MODEL.DEVICE = 'cuda' if torch.cuda.is_available() else 'cpu'
     cfg.merge_from_file(model_zoo.get_config_file("COCO-InstanceSegmentation/mask_rcnn_R_50_FPN_3x.yaml"))
     cfg.DATASETS.TRAIN = (train_name,)
     cfg.DATASETS.TEST = ()
@@ -200,15 +199,9 @@ def start_training(train_name: str = "instruments_train",
 def inference_on_trained_mode(instruments_metadata,
                               path_to_data,
                               cfg,
-                              model_location="model_final.pth"):
-    # cfg = get_cfg()
-    cfg.MODEL.DEVICE = 'cpu'
-    # cfg.merge_from_file(model_zoo.get_config_file("COCO-InstanceSegmentation/mask_rcnn_R_50_FPN_3x.yaml"))
-    # cfg.merge_from_file(model_zoo.get_config_file("COCO-InstanceSegmentation/mask_rcnn_R_50_FPN_3x.yaml"))
-
-    # train_name:str="instruments_train"
-    # cfg.DATASETS.TRAIN = (train_name,)
-
+                              model_location="model_final.pth")->None:
+    cfg.MODEL.DEVICE = 'cuda' if torch.cuda.is_available() else 'cpu'
+     # = 'cpu'
     cfg.MODEL.WEIGHTS = os.path.join(cfg.OUTPUT_DIR, model_location)
     cfg.MODEL.ROI_HEADS.SCORE_THRESH_TEST = 0.5  # set the testing threshold for this model
     cfg.DATASETS.TEST = ("instruments_val",)
@@ -226,52 +219,8 @@ def inference_on_trained_mode(instruments_metadata,
                        )
         out = v.draw_instance_predictions(outputs["instances"].to("cpu"))
         cv2.imshow('image', out.get_image()[:, :, ::-1])
-        # cv2.('image', out.get_image()[:, :, ::-1])
         cv2.waitKey(0)
 
-        # dataset_dicts = get_balloon_dicts(path_valid_images)
-        # # MetadataCatalog.get("instruments_val").set(thing_classes=classes_list)
-        # for d in random.sample(dataset_dicts, 3):
-        #     # img = cv2.imread(d["file_name"])
-        #     # visualizer = Visualizer(img[:, :, ::-1], metadata=instruments_metadata, scale=0.5)
-        #     # vis = visualizer.draw_dataset_dict(d)
-        #     # cv2.imshow('image', vis.get_image()[:, :, ::-1])
-        #     # cv2.waitKey(0)
-        #
-        #     im = cv2.imread(d["file_name"])
-        #     print(d["file_name"])
-        #     outputs = predictor(im)
-        #     v = Visualizer(im[:, :, ::-1],
-        #                    # metadata=MetadataCatalog.get("instruments_val").set(thing_classes=['scissors', 'needle_holder', 'grasper']),
-        #                    metadata=instruments_metadata,
-        #                    scale=0.8,
-        #                    instance_mode=ColorMode.IMAGE_BW  # remove the colors of unsegmented pixels
-        #                    )
-        #     inference = outputs["instances"]
-        #     print(f'Instances = {outputs["instances"].pred_classes}')
-        #     if len(inference._fields['pred_boxes'])>0:
-        #         plt.imshow(im)
-        #         for index, box in enumerate(inference._fields['pred_boxes']):
-        #             # Display the image
-        #             # if (inference._fields['pred_classes'].numpy()[index]) in [0, 1, 2, 19, 28]:
-        #
-        #             boxes = box.numpy()
-        #             print(f"{boxes=}")
-        #
-        #             #print(f"{class_predcited=}")
-        #             x1 = math.ceil(boxes[0])
-        #             y1 = math.ceil(boxes[1])
-        #             x2 = math.ceil(boxes[2])
-        #             y2 = math.ceil(boxes[3])
-        #             # crop_img = img[x1:y1, x2:y2]
-        #             # Add the patch to the Axes
-        #             # plt.show(crop_img)
-        #             plt.gca().add_patch(Rectangle((x1, y1), x2-x1, y2-y1, linewidth=1, edgecolor='r', facecolor='none'))
-        #         plt.show()
-        #     # v = v.draw_instance_predictions(outputs["instances"])
-        #     # cv2.imshow('image', v.get_image()[:, :, ::-1])
-        #     # cv2.waitKey(0)
-        #     pass
 
 
 def main():
@@ -287,8 +236,7 @@ def main():
 
     # inference_old_model()
     cfg = start_training(train_name="instruments_train", classes_list=['scissors', 'needle_holder', 'grasper'])
-    for i in range(4):
-        inference_on_trained_mode(instruments_metadata, path_to_data, cfg=cfg, model_location="model_final.pth")
+    inference_on_trained_mode(instruments_metadata, path_to_data, cfg=cfg, model_location="model_final.pth")
 
 
 if __name__ == "__main__":
