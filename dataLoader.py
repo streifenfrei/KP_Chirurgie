@@ -8,7 +8,7 @@ from scipy.ndimage.filters import gaussian_filter
 from torch.utils.data.sampler import SubsetRandomSampler
 
 from torch.utils.data import ConcatDataset
-
+import torchvision.transforms as transforms_T
 
 # for image augmentation
 from albumentations import (
@@ -116,11 +116,15 @@ class OurDataLoader(Dataset):
             augmented = self.transform(**data)
             
             image, both_labels = augmented["image"], augmented["mask"]
-            #both_labels = mask_transform(both_labels)
+            #print(image.shape)
+            #tf = image_norm()
+            #image = tf(image)
 
             if self.mode == 'train':
+                #return image, torch.from_numpy(both_labels).float()
                 return img_to_tensor(image), torch.from_numpy(both_labels).float()
             else:
+                #return image, str(img_file_name)
                 return img_to_tensor(image), str(img_file_name)
             
 
@@ -132,7 +136,7 @@ def find_all_json(json_dir):
     all_json_names = glob.glob(json_dir+'/**/*.json', recursive=True)
     return all_json_names
 
-
+# 
 def image_transform(p=1):
     return Compose([
         #PadIfNeeded(min_height=100, min_width=100, p=0.5),
@@ -145,6 +149,12 @@ def image_transform(p=1):
         ShiftScaleRotate(scale_limit=0.1,rotate_limit=30, border_mode=0)
     ], p=p)
     
+def image_norm():
+    return transforms_T.Compose([
+        transforms_T.ToTensor(),
+        transforms_T.Normalize((0.485, 0.456, 0.406), (0.229, 0.224, 0.225))
+    ])
+        
 
 def img_b64_to_arr(img_b64):
     '''
@@ -441,11 +451,16 @@ if __name__ == '__main__':
             fig=plt.figure(figsize=(12, 6))
             fig.add_subplot(3,3,1)
             plt.imshow(image[0].view(image[0].shape[0], image[0].shape[1], image[0].shape[2]).permute(1, 2, 0))
+            for row in image[0,1,:,:].numpy():
+                print(max(row))
             fig.add_subplot(3,3,2)
             plt.imshow(labels[0,:,:,0].view(labels[0].shape[0], labels[0].shape[1]))
             fig.add_subplot(3,3,3)
             plt.imshow(labels[0,:,:,1].view(labels[0].shape[0], labels[0].shape[1]))
-
+            #print(labels.shape)
+            #for row in labels[0,:,:,1].view(labels[0].shape[0], labels[0].shape[1]).numpy():
+            #    print(max(row))
+            
             fig.add_subplot(3,3,4)
             plt.imshow(labels[0,:,:,2].view(labels[0].shape[0], labels[0].shape[1]))
 

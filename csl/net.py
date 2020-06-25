@@ -60,11 +60,12 @@ class CSLNet(nn.Module):
         self.decoding_layer3_2 = self._make_layer(128, sampling=self._Sampling.none_norm)
         self.decoding_layer4 = self._make_layer(64, sampling=self._Sampling.up)
 
-        self.segmentation_layer = conv3x3(self.inplanes, 1)
+        self.segmentation_layer = conv3x3(self.inplanes, 1) # indeed remove the relu
         self.pre_localisation_layer = self._make_layer(32, sampling=self._Sampling.none_relu)
         self.inplanes = 33
         self.localisation_layer = self._make_layer(localisation_classes, sampling=self._Sampling.none_relu)
-
+        #self.localisation_layer = nn.Sequential(conv3x3(conv3x3(self.inplanes, planes), nn.Sigmoid())
+        
         self.localisation_classes = localisation_classes
 
     def _make_bottleneck_block(self, planes, downsample=False, stride=1):
