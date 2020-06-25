@@ -7,7 +7,7 @@ from matplotlib.patches import Rectangle
 from PIL import Image
 import random
 import cv2
-from typing import List
+from typing import List, Tuple
 import math
 
 # import some common detectron2 utilities
@@ -41,6 +41,7 @@ def inference_old_model(image_path: str = "../dataset/frame_00000.png") -> None:
     Returns:
         Nothing to return, only shows the inference results via cv2.imshow
     """
+    image_path = "/Users/chernykh_alexander/Yandex.Disk.localized/CloudTUD/Komp_CHRIRURGIE/instruments/train/frame_00000_0.png"
     im = cv2.imread(image_path)
 
     cfg = get_cfg()
@@ -50,6 +51,7 @@ def inference_old_model(image_path: str = "../dataset/frame_00000.png") -> None:
     cfg.MODEL.ROI_HEADS.SCORE_THRESH_TEST = 0.5  # set threshold for this model
     # Find a model from detectron2's model zoo. You can use the https://dl.fbaipublicfiles... url as well
     cfg.MODEL.WEIGHTS = model_zoo.get_checkpoint_url("COCO-InstanceSegmentation/mask_rcnn_R_50_FPN_3x.yaml")
+    # cfg.MODEL.WEIGHTS = os.path.join(cfg.OUTPUT_DIR, "model_final_4000000.pth")
     predictor = DefaultPredictor(cfg)
     outputs = predictor(im)
     print(outputs["instances"].pred_classes)
@@ -111,7 +113,7 @@ def get_balloon_dicts(img_dir:str,
                 "bbox": [np.min(px), np.min(py), np.max(px), np.max(py)],
                 "bbox_mode": BoxMode.XYXY_ABS,
                 "segmentation": [poly],
-                "category_id": anno['label'],
+                "category_id": anno['category_id'],
             }
             objs.append(obj)
         record["annotations"] = objs
@@ -119,141 +121,171 @@ def get_balloon_dicts(img_dir:str,
     return dataset_dicts
 
 
-def register_dataset_and_metadata(path_to_data, classes_list: List[str]) -> detectron2.data.catalog.Metadata:
+if __name__ == '__main__':
+    # def register_dataset_and_metadata(path_to_data, classes_list: List[str]) -> Tuple[detectron2.data.catalog.Metadata,
+    #                                                                                  detectron2.data.catalog.Metadata]:
     """
     Registrs the dataset according to the https://detectron2.readthedocs.io/tutorials/datasets.html
-
+    
     Args:
         path_to_data: path to the folder, where the train and validation forlder is located
                       folder train has images for training and a json that describes the
                       data (bounding boxes, labels etc)
         classes_list: is a list of all possible labels that might occur
-
+    
     Returns:
         a registration Metadata object that can be further used for training/testing/validation
         it is similar to a Dataloader
-
+    
     """
+
+    classes_list = ['scissors', 'needle_holder', 'grasper']
+    path_to_data =  "/Users/chernykh_alexander/Yandex.Disk.localized/CloudTUD/Komp_CHRIRURGIE/instruments/"
     for d in ["train", "val"]:
         DatasetCatalog.register("instruments_" + d, lambda d=d: get_balloon_dicts(path_to_data + d))
         MetadataCatalog.get("instruments_" + d).set(thing_classes=classes_list)
     instruments_metadata = MetadataCatalog.get("instruments_train")
-    return instruments_metadata
+    # instruments_metadata_val = MetadataCatalog.get("instruments_val")
+        # return instruments_metadata_train, instruments_metadata_val
+
+    # path_to_data = "/Users/chernykh_alexander/Yandex.Disk.localized/CloudTUD/Komp_CHRIRURGIE/instruments/"
+    def test_registration(instruments_metadata: detectron2.data.catalog.Metadata, path_to_training_data: str,
+                          json_with_desription_name: str = "dataset_registration_detectron2.json") -> None:
+        """
+        testing the registred dataset and its metadata by visualising the results of the annotation on the image
 
 
-def test_registration(instruments_metadata: detectron2.data.catalog.Metadata, path_to_training_data: str,
-                      json_with_desription_name: str = "dataset_registration_detectron2.json") -> None:
-    """
-    testing the registred dataset and its metadata by visualising the results of the annotation on the image
+        Args:
+            instruments_metadata: the registred data
+            path_to_training_data:
 
+        Returns:
 
-    Args:
-        instruments_metadata: the registred data
-        path_to_training_data:
-
-    Returns:
-
-    """
-    dataset_dicts = get_balloon_dicts(path_to_training_data,
-                                      json_with_desription_name=json_with_desription_name)
-    for d in random.sample(dataset_dicts, 15):
-        img = cv2.imread(d["file_name"])
-        visualizer = Visualizer(img[:, :, ::-1], metadata=instruments_metadata, scale=0.5)
-        vis = visualizer.draw_dataset_dict(d)
-        cv2.imshow('image', vis.get_image()[:, :, ::-1])
-        cv2.waitKey(0)
+        """
+        dataset_dicts = get_balloon_dicts(path_to_training_data,
+                                          json_with_desription_name=json_with_desription_name)
+        for d in random.sample(dataset_dicts, 15):
+            img = cv2.imread(d["file_name"])
+            print(f'Took: {d["file_name"]}')
+            visualizer = Visualizer(img[:, :, ::-1], metadata=instruments_metadata, scale=0.5)
+            vis = visualizer.draw_dataset_dict(d)
+            cv2.imshow('image', vis.get_image()[:, :, ::-1])
+            cv2.waitKey(0)
 
 
 
-def start_training(train_name:str="instruments_train", classes_list:List[str]=['scissors', 'needle_holder', 'grasper']):
+    # def start_training(train_name:str="instruments_train", classes_list:List[str]=['scissors', 'needle_holder', 'grasper']):
     cfg = get_cfg()
 
-    # cfg.MODEL.DEVICE = 'cpu'
+    cfg.MODEL.DEVICE = 'cpu'
     cfg.merge_from_file(model_zoo.get_config_file("COCO-InstanceSegmentation/mask_rcnn_R_50_FPN_3x.yaml"))
-    cfg.DATASETS.TRAIN = (train_name,)
+    cfg.DATASETS.TRAIN = ("instruments_train",)
     cfg.DATASETS.TEST = ()
     cfg.DATALOADER.NUM_WORKERS = 2
     cfg.MODEL.WEIGHTS = model_zoo.get_checkpoint_url("COCO-InstanceSegmentation/mask_rcnn_R_50_FPN_3x.yaml")  # Let training initialize from model zoo
     cfg.SOLVER.IMS_PER_BATCH = 2
     cfg.SOLVER.BASE_LR = 0.00025  # pick a good LR
-    cfg.SOLVER.MAX_ITER = 400   # 300 iterations seems good enough for this toy dataset; you may need to train longer for a practical dataset
+    cfg.SOLVER.MAX_ITER = 400001   # 300 iterations seems good enough for this toy dataset; you may need to train longer for a practical dataset
     cfg.MODEL.ROI_HEADS.BATCH_SIZE_PER_IMAGE = 128   # faster, and good enough for this toy dataset (default: 512)
     cfg.MODEL.ROI_HEADS.NUM_CLASSES = len(classes_list)
 
     os.makedirs(cfg.OUTPUT_DIR, exist_ok=True)
     trainer = DefaultTrainer(cfg)
-    trainer.resume_or_load(resume=False)
+    trainer.resume_or_load(resume=True)
     trainer.train()
 
 
-def inference_on_trained_mode(instruments_metadata, path_valid_images, model_location = "model_final_gpu.pth" ):
-    cfg = get_cfg()
+    # def inference_on_trained_mode(instruments_metadata, path_valid_images, model_location = "model_final_4000000.pth" ):
+    #     cfg = get_cfg()
     cfg.MODEL.DEVICE = 'cpu'
     #cfg.merge_from_file(model_zoo.get_config_file("COCO-InstanceSegmentation/mask_rcnn_R_50_FPN_3x.yaml"))
+    # cfg.merge_from_file(model_zoo.get_config_file("COCO-InstanceSegmentation/mask_rcnn_R_50_FPN_3x.yaml"))
 
+    # train_name:str="instruments_train"
+    # cfg.DATASETS.TRAIN = (train_name,)
+    model_location = "model_final.pth"
     cfg.MODEL.WEIGHTS = os.path.join(cfg.OUTPUT_DIR, model_location)
-    cfg.MODEL.ROI_HEADS.SCORE_THRESH_TEST = 0.4  # set the testing threshold for this model
+    cfg.MODEL.ROI_HEADS.SCORE_THRESH_TEST = 0.5  # set the testing threshold for this model
     cfg.DATASETS.TEST = ("instruments_val",)
+
     predictor = DefaultPredictor(cfg)
 
-
-
-    dataset_dicts = get_balloon_dicts(path_valid_images)
-    # MetadataCatalog.get("instruments_val").set(thing_classes=classes_list)
-    for d in random.sample(dataset_dicts, 3):
-        # img = cv2.imread(d["file_name"])
-        # visualizer = Visualizer(img[:, :, ::-1], metadata=instruments_metadata, scale=0.5)
-        # vis = visualizer.draw_dataset_dict(d)
-        # cv2.imshow('image', vis.get_image()[:, :, ::-1])
-        # cv2.waitKey(0)
-
+    from detectron2.utils.visualizer import ColorMode
+    dataset_dicts = get_balloon_dicts(f"{path_to_data}/val")
+    for d in random.sample(dataset_dicts, 10):
         im = cv2.imread(d["file_name"])
         outputs = predictor(im)
         v = Visualizer(im[:, :, ::-1],
-                       # metadata=MetadataCatalog.get("instruments_val").set(thing_classes=['scissors', 'needle_holder', 'grasper']),
-                       metadata=instruments_metadata,
+                       metadata=instruments_metadata ,
                        scale=0.8,
-                       instance_mode=ColorMode.IMAGE_BW  # remove the colors of unsegmented pixels
-                       )
-        inference = outputs["instances"]
-        if len(inference._fields['pred_boxes'])>0:
-            for index, box in enumerate(inference._fields['pred_boxes']):
-                # Display the image
-                # if (inference._fields['pred_classes'].numpy()[index]) in [0, 1, 2, 19, 28]:
-                plt.imshow(im)
-                boxes = box.numpy()
-                print(f"{boxes=}")
-
-                #print(f"{class_predcited=}")
-                x1 = math.ceil(boxes[0])
-                y1 = math.ceil(boxes[1])
-                x2 = math.ceil(boxes[2])
-                y2 = math.ceil(boxes[3])
-                # crop_img = img[x1:y1, x2:y2]
-                # Add the patch to the Axes
-                # plt.show(crop_img)
-                plt.gca().add_patch(Rectangle((x1, y1), x2-x1, y2-y1, linewidth=1, edgecolor='r', facecolor='none'))
-                plt.show()
-        # v = v.draw_instance_predictions(outputs["instances"])
-        # cv2.imshow('image', v.get_image()[:, :, ::-1])
-        # cv2.waitKey(0)
-        pass
+                       instance_mode=ColorMode.IMAGE_BW   # remove the colors of unsegmented pixels
+        )
+        out = v.draw_instance_predictions(outputs["instances"].to("cpu"))
+        cv2.imshow('image',out.get_image()[:, :, ::-1])
+        # cv2.('image', out.get_image()[:, :, ::-1])
+        cv2.waitKey(0)
 
 
-def main():
-    classes_list = ['scissors', 'needle_holder', 'grasper']
-    # path_to_data = "../dataset/instruments/"
-    path_to_data =  "/Users/chernykh_alexander/Yandex.Disk.localized/CloudTUD/Komp_CHRIRURGIE/instruments"
-    instruments_metadata = register_dataset_and_metadata(path_to_data, classes_list)
-    # path_to_training_data = "../dataset/instruments/train"
-    path_to_training_data = "/Users/chernykh_alexander/Yandex.Disk.localized/CloudTUD/Komp_CHRIRURGIE/instruments/train"
+        # dataset_dicts = get_balloon_dicts(path_valid_images)
+        # # MetadataCatalog.get("instruments_val").set(thing_classes=classes_list)
+        # for d in random.sample(dataset_dicts, 3):
+        #     # img = cv2.imread(d["file_name"])
+        #     # visualizer = Visualizer(img[:, :, ::-1], metadata=instruments_metadata, scale=0.5)
+        #     # vis = visualizer.draw_dataset_dict(d)
+        #     # cv2.imshow('image', vis.get_image()[:, :, ::-1])
+        #     # cv2.waitKey(0)
+        #
+        #     im = cv2.imread(d["file_name"])
+        #     print(d["file_name"])
+        #     outputs = predictor(im)
+        #     v = Visualizer(im[:, :, ::-1],
+        #                    # metadata=MetadataCatalog.get("instruments_val").set(thing_classes=['scissors', 'needle_holder', 'grasper']),
+        #                    metadata=instruments_metadata,
+        #                    scale=0.8,
+        #                    instance_mode=ColorMode.IMAGE_BW  # remove the colors of unsegmented pixels
+        #                    )
+        #     inference = outputs["instances"]
+        #     print(f'Instances = {outputs["instances"].pred_classes}')
+        #     if len(inference._fields['pred_boxes'])>0:
+        #         plt.imshow(im)
+        #         for index, box in enumerate(inference._fields['pred_boxes']):
+        #             # Display the image
+        #             # if (inference._fields['pred_classes'].numpy()[index]) in [0, 1, 2, 19, 28]:
+        #
+        #             boxes = box.numpy()
+        #             print(f"{boxes=}")
+        #
+        #             #print(f"{class_predcited=}")
+        #             x1 = math.ceil(boxes[0])
+        #             y1 = math.ceil(boxes[1])
+        #             x2 = math.ceil(boxes[2])
+        #             y2 = math.ceil(boxes[3])
+        #             # crop_img = img[x1:y1, x2:y2]
+        #             # Add the patch to the Axes
+        #             # plt.show(crop_img)
+        #             plt.gca().add_patch(Rectangle((x1, y1), x2-x1, y2-y1, linewidth=1, edgecolor='r', facecolor='none'))
+        #         plt.show()
+        #     # v = v.draw_instance_predictions(outputs["instances"])
+        #     # cv2.imshow('image', v.get_image()[:, :, ::-1])
+        #     # cv2.waitKey(0)
+        #     pass
 
-    # test_registration(instruments_metadata, path_to_training_data,
-    #                   json_with_desription_name="dataset_registration_detectron2.json")
 
-    #start_training(train_name="instruments_train", classes_list=['scissors', 'needle_holder', 'grasper'])
-    for i in range(10):
-        inference_on_trained_mode(instruments_metadata,"/Users/chernykh_alexander/Yandex.Disk.localized/CloudTUD/Komp_CHRIRURGIE/instruments/val",  "model_final_gpu.pth")
-
-if __name__ == "__main__":
-    main()
+    # def main():
+    #     classes_list = ['scissors', 'needle_holder', 'grasper']
+    #     # path_to_data = "../dataset/instruments/"
+    #     path_to_data =  "/Users/chernykh_alexander/Yandex.Disk.localized/CloudTUD/Komp_CHRIRURGIE/instruments"
+    #     instruments_metadata_train,instruments_metadata_val  = register_dataset_and_metadata(path_to_data, classes_list)
+    #     # path_to_training_data = "../dataset/instruments/train"
+    #     path_to_training_data = "/Users/chernykh_alexander/Yandex.Disk.localized/CloudTUD/Komp_CHRIRURGIE/instruments/train"
+    #     path_to_val_data = "/Users/chernykh_alexander/Yandex.Disk.localized/CloudTUD/Komp_CHRIRURGIE/instruments/val"
+    #     # test_registration(instruments_metadata, path_to_val_data,
+    #     #                   json_with_desription_name="dataset_registration_detectron2.json")
+    #
+    #     # inference_old_model()
+    #     # start_training(train_name="instruments_train", classes_list=['scissors', 'needle_holder', 'grasper'])
+    #     for i in range(4):
+    #         inference_on_trained_mode(instruments_metadata_val,path_to_val_data,  "model_final_4000000.pth")
+    #
+    # if __name__ == "__main__":
+    #     main()
