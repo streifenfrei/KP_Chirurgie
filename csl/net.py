@@ -138,7 +138,7 @@ class CSLNet(nn.Module):
                 fig_counter += 1
                 plt.imshow(localisation[0, loc_class, :, :].view(width, height))
             plt.show()
-            
+
     def forward(self, x):
         x = self.conv1(x)
         x = self.bn1(x)
@@ -204,8 +204,12 @@ class Training:
 
         class _DiceLoss:
 
-            def __call__(self, output, target):
-                probs = nn.functional.softmax(output, dim=1)
+            def __call__(self, input, target):
+                smooth = 0.00001
+                if input.shape[1] == 1:
+                    probs = torch.sigmoid(input)
+                else:
+                    probs = nn.functional.softmax(input, dim=1)
 
                 num = probs * target  # b,c,h,w--p*g
                 num = torch.sum(num, dim=3)  # b,c,h
@@ -219,11 +223,13 @@ class Training:
                 den2 = torch.sum(den2, dim=3)  # b,c,h
                 den2 = torch.sum(den2, dim=2)  # b,c
 
-                dice = 2 * ((num + 10e-7) / (den1 + den2 + 10e-7))
-
-                #dice_eso = dice[:, 0:-1]  # we ignore bg dice val, and take the fg
-
-                dice_total = 1 - torch.sum(dice) / dice.size(0)  # divide by batch_sz, now for 1 layer
+                dice = 2 * ((num + smooth) / (den1 + den2 + smooth))
+                print(dice.shape)
+                if input.shape[1] == 1:
+                    dice_eso = dice[:, 0]  # we ignore bg dice val, and take the fg
+                else:
+                    dice_eso = dice[:, 0:-1]  # we ignore bg dice val, and take the fg
+                dice_total = 1 - torch.sum(dice_eso) / dice_eso.size(0)  # divide by batch_sz
 
                 return dice_total
 
@@ -281,7 +287,8 @@ class Training:
     def _val_step(self, epoch, index, batch):
         loss, segmentation_loss, localisation_loss = self._get_loss(batch)
         print("validation: epoch: {0} | batch: {1} | loss: {2} ({3} + {4} * {5})".format(epoch, index, loss,
-                                                                                         segmentation_loss, self.lambdah,
+                                                                                         segmentation_loss,
+                                                                                         self.lambdah,
                                                                                          localisation_loss))
         return loss.item()
 
@@ -332,6 +339,3 @@ class Training:
             pass
         finally:
             writer.close()
-
-
-
