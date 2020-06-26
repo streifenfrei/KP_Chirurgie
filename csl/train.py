@@ -9,11 +9,11 @@ from dataLoader import image_transform, OurDataLoader
 # model
 localisation_classes = 4
 # optimizer
-learning_rate = 10e-4
+learning_rate = 10e-5
 momentum = 0.9  # for SGD
 # loss
-sigma = 6
-lambdah = 1
+default_sigma = 6
+default_lambdah = 1
 
 
 def init_model(save_file):
@@ -39,7 +39,7 @@ def _load_model(state_dict):
     return model, device
 
 
-def train_model(workspace, dataset, segmentation_loss, normalize_heatmap=False, batch_size=2):
+def train_model(workspace, dataset, segmentation_loss, normalize_heatmap=False, batch_size=2, lambdah=default_lambdah, sigma=default_sigma, non_img_norm_flag=True):
     checkpoint = torch.load(os.path.join(workspace, 'csl.pth'))
     model, device = _load_model(checkpoint['model_state_dict'])
     optimizer = torch.optim.Adam(model.parameters(), lr=learning_rate)
@@ -49,7 +49,8 @@ def train_model(workspace, dataset, segmentation_loss, normalize_heatmap=False, 
     dataset = OurDataLoader(data_dir=dataset, task_type='both', transform=image_transform(p=1),
                             pose_sigma=sigma,
                             normalize_heatmap=normalize_heatmap,
-                            seg_type='binary')
+                            seg_type='binary',
+                            non_image_norm_flag=non_img_norm_flag)
     epoch = checkpoint['epoch']
     if device == 'cuda':
         del checkpoint
@@ -59,7 +60,7 @@ def train_model(workspace, dataset, segmentation_loss, normalize_heatmap=False, 
     training.start()
 
 
-def call_model(workspace, dataset, normalize_heatmap=False, batch_size=2):
+def call_model(workspace, dataset, normalize_heatmap=False, batch_size=2, sigma=default_sigma):
     checkpoint = torch.load(os.path.join(workspace, 'csl.pth'), map_location=torch.device('cpu'))
     model, device = _load_model(checkpoint['model_state_dict'])
     dataset = OurDataLoader(data_dir=dataset, task_type='both', transform=image_transform(p=1),
@@ -80,6 +81,10 @@ if __name__ == '__main__':
     arg_parser.add_argument("--segloss", "-sl", type=str, choices=['ce', 'dice'], default='ce')
     arg_parser.add_argument("--normalize", "-n", action='store_true', default=False)
     arg_parser.add_argument("--batch", "-b", type=int, default=2)
+    arg_parser.add_argument("--lambdah", "-l", type=int, default=default_lambdah)
+    arg_parser.add_argument("--sigma", "-s", type=int, default=default_sigma)
+    arg_parser.add_argument("--non_img_norm_flag", "-in", action='store_false', default=True)
+    
     args = arg_parser.parse_args()
 
     if args.command == 'init':
@@ -93,6 +98,6 @@ if __name__ == '__main__':
         else:
             raise ValueError
         train_model(args.workspace, args.dataset, segmentation_loss,
-                    normalize_heatmap=args.normalize, batch_size=args.batch)
+                    normalize_heatmap=args.normalize, batch_size=args.batch, lambdah=args.lambdah, sigma=args.sigma, non_img_norm_flag=args.non_img_norm_flag)
     elif args.command == 'call':
-        call_model(args.workspace, args.dataset, normalize_heatmap=args.normalize, batch_size=args.batch)
+        call_model(args.workspace, args.dataset, normalize_heatmap=args.normalize, batch_size=args.batch, sigma=args.sigma)

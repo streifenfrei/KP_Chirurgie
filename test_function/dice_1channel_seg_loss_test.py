@@ -36,6 +36,7 @@ def dice_loss(input,target):
     smooth = 0.00001
     if(input.shape[1] == 1):
         probs = torch.sigmoid(input)
+        print(probs)
     else:    
         probs = F.softmax(input, dim = 1)
 
@@ -54,7 +55,7 @@ def dice_loss(input,target):
     dice=2*((num + smooth)/(den1+den2+smooth))
     print(dice.shape)
     if(input.shape[1] == 1):
-        dice_eso=dice[:,0]#we ignore bg dice val, and take the fg
+        dice_eso=dice#we ignore bg dice val, and take the fg
     else:
         dice_eso=dice[:,0:-1]#we ignore bg dice val, and take the fg
     dice_total=1 - torch.sum(dice_eso)/dice_eso.size(0)#divide by batch_sz
@@ -71,9 +72,9 @@ def test_loss(output, target):
     
 if __name__ == '__main__':
     
-    output = np.ones((1,1,512,960))  # batch, channel, h, w
-    target = np.zeros((1,1,512,960)) 
-    output *= -1.0
+    output = np.ones((3,1,512,960))  # batch, channel, h, w
+    target = np.zeros((3,1,512,960)) 
+    output *= -10.0
     '''
     for i in range(output.shape[2]): 
         for j in range(output.shape[3]):
@@ -81,7 +82,7 @@ if __name__ == '__main__':
     '''
     #output *= -10    
     for i in range(output.shape[3]):
-        output[0,0,0,i] = 1.0
+        output[0,0,0,i] = 10.0
 
         target[0,0,0,i] = 1.0 #set class 0
     

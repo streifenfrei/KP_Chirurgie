@@ -63,9 +63,8 @@ class CSLNet(nn.Module):
         self.segmentation_layer = conv3x3(self.inplanes, 1) # indeed remove the relu
         self.pre_localisation_layer = self._make_layer(32, sampling=self._Sampling.none_relu)
         self.inplanes = 33
-        self.localisation_layer = self._make_layer(localisation_classes, sampling=self._Sampling.none_relu)
-        #self.localisation_layer = nn.Sequential(conv3x3(conv3x3(self.inplanes, planes), nn.Sigmoid())
-        
+        #self.localisation_layer = self._make_layer(localisation_classes, sampling=self._Sampling.none_relu)
+        self.localisation_layer = nn.Sequential(conv3x3(self.inplanes, localisation_classes), nn.Sigmoid())
         self.localisation_classes = localisation_classes
 
     def _make_bottleneck_block(self, planes, downsample=False, stride=1):
@@ -225,7 +224,6 @@ class Training:
                 den2 = torch.sum(den2, dim=2)  # b,c
 
                 dice = 2 * ((num + smooth) / (den1 + den2 + smooth))
-                print(dice.shape)
                 if input.shape[1] == 1:
                     dice_eso = dice[:, 0]  # we ignore bg dice val, and take the fg
                 else:
@@ -317,6 +315,7 @@ class Training:
                 validation_loss = sum(losses) / len(losses)
                 writer.add_scalar('Loss/validation', validation_loss, epoch)
                 self.scheduler.step(validation_loss)
+                writer.add_scalar('learning_rate', self.optimizer.param_groups[0]['lr'], epoch)
                 # saving
                 if not epoch % self.save_rate:
                     # move old model to older_models directory
@@ -331,7 +330,7 @@ class Training:
                         'model_state_dict': self.model.state_dict(),
                         'optimizer_state_dict': self.optimizer.state_dict(),
                         'scheduler_state_dict': self.scheduler.state_dict(),
-                        'epoch': epoch + 1,
+                        'epoch': epoch + 1
                     }, save_file)
                     writer.flush()
                     print("saved model.")

@@ -51,7 +51,7 @@ landmark_name_to_id_ = {
 }
 
 class OurDataLoader(Dataset):
-    def __init__(self, data_dir, transform=None, mode='train', task_type='both', class_name_to_id = class_name_to_id_, landmark_name_to_id = landmark_name_to_id_, pose_sigma = 7, normalize_heatmap = True, seg_type = 'binary'): 
+    def __init__(self, data_dir, transform=None, mode='train', task_type='both', class_name_to_id = class_name_to_id_, landmark_name_to_id = landmark_name_to_id_, pose_sigma = 7, normalize_heatmap = True, seg_type = 'binary', non_image_norm_flag = True): 
         '''
         constructor of OurDataLoader
         @ param:
@@ -69,6 +69,7 @@ class OurDataLoader(Dataset):
         self.pose_sigma = pose_sigma
         self.normalize_heatmap = normalize_heatmap
         self.seg_type = seg_type
+        self.non_image_norm_flag = non_image_norm_flag
         
     def __len__(self):
         '''
@@ -116,16 +117,24 @@ class OurDataLoader(Dataset):
             augmented = self.transform(**data)
             
             image, both_labels = augmented["image"], augmented["mask"]
-            #print(image.shape)
-            #tf = image_norm()
-            #image = tf(image)
+            
+            if(self.non_image_norm_flag == True):
+                #print(image.shape)
+                tf = image_norm()
+                image = tf(image)
 
-            if self.mode == 'train':
-                #return image, torch.from_numpy(both_labels).float()
-                return img_to_tensor(image), torch.from_numpy(both_labels).float()
+                if self.mode == 'train':
+                    return image, torch.from_numpy(both_labels).float()
+                    #return img_to_tensor(image), torch.from_numpy(both_labels).float()
+                else:
+                    return image, str(img_file_name)
+                    #return img_to_tensor(image), str(img_file_name)
             else:
-                #return image, str(img_file_name)
-                return img_to_tensor(image), str(img_file_name)
+                #print('img norm? :',self.non_image_norm_flag)
+                if self.mode == 'train':
+                    return img_to_tensor(image), torch.from_numpy(both_labels).float()
+                else:
+                    return img_to_tensor(image), str(img_file_name)
             
 
 
@@ -390,9 +399,9 @@ def train_val_dataset(dataset_list, validation_split = 0.2, train_batch_size = 1
         valid_sampler = SubsetRandomSampler(val_indices)
 
         train_loader = torch.utils.data.DataLoader(ConcatDataset(dataset_list), batch_size=train_batch_size, 
-                                                   sampler=train_sampler)
+                                                   sampler=train_sampler,num_workers=8, pin_memory = True)
         validation_loader = torch.utils.data.DataLoader(ConcatDataset(dataset_list), batch_size=valid_batch_size,
-                                                        sampler=valid_sampler)
+                                                        sampler=valid_sampler, num_workers=8, pin_memory = True)
     else:
         dataset = dataset_list
         random_seed= 42
@@ -411,9 +420,9 @@ def train_val_dataset(dataset_list, validation_split = 0.2, train_batch_size = 1
         valid_sampler = SubsetRandomSampler(val_indices)
 
         train_loader = torch.utils.data.DataLoader(dataset, batch_size=train_batch_size, 
-                                                   sampler=train_sampler)
+                                                   sampler=train_sampler, num_workers=8, pin_memory = True)
         validation_loader = torch.utils.data.DataLoader(dataset, batch_size=valid_batch_size,
-                                                        sampler=valid_sampler)
+                                                        sampler=valid_sampler, num_workers=8, pin_memory = True)
     return train_loader, validation_loader
     
 def prepare_batch(batch, segmentation_classes, localisation_classes):
@@ -426,8 +435,8 @@ def prepare_batch(batch, segmentation_classes, localisation_classes):
     
 if __name__ == '__main__':
 
-    dataset1 = OurDataLoader(data_dir=r'data/Data1', task_type = 'both', transform=image_transform(p=1), pose_sigma = 15, normalize_heatmap = True, seg_type = 'binary')
-    dataset2 = OurDataLoader(data_dir=r'data/Data2', task_type = 'both', transform=image_transform(p=1), pose_sigma = 15, normalize_heatmap = True, seg_type = 'binary')
+    dataset1 = OurDataLoader(data_dir=r'../data_all/Data1', task_type = 'both', transform=image_transform(p=1), pose_sigma = 15, normalize_heatmap = True, seg_type = 'binary')
+    dataset2 = OurDataLoader(data_dir=r'../data_all/Data2', task_type = 'both', transform=image_transform(p=1), pose_sigma = 15, normalize_heatmap = True, seg_type = 'binary')
     
     # load 1 dataset, or as list: both are ok 
     #train_loader, validation_loader = train_val_dataset(dataset2, validation_split = 0.3, train_batch_size = 2, valid_batch_size = 2, shuffle_dataset = True)
