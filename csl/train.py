@@ -12,7 +12,7 @@ localisation_classes = 4
 learning_rate = 10e-5
 momentum = 0.9  # for SGD
 # loss
-default_sigma = 6
+default_sigma = 15
 default_lambdah = 1
 
 
@@ -20,7 +20,7 @@ def init_model(save_file):
     model = CSLNet(localisation_classes=localisation_classes)
     model.load_state_dict(torch.load(os.path.abspath("weights/resnet50-19c8e357.pth")), strict=False)
     optimizer = torch.optim.Adam(model.parameters(), lr=learning_rate)
-    scheduler = ReduceLROnPlateau(optimizer, 'min')
+    scheduler = ReduceLROnPlateau(optimizer, 'min', verbose=1, patience=50)
     torch.save({
         'model_state_dict': model.state_dict(),
         'optimizer_state_dict': optimizer.state_dict(),
@@ -44,8 +44,9 @@ def train_model(workspace, dataset, segmentation_loss, normalize_heatmap=False, 
     model, device = _load_model(checkpoint['model_state_dict'])
     optimizer = torch.optim.Adam(model.parameters(), lr=learning_rate)
     optimizer.load_state_dict(checkpoint['optimizer_state_dict'])
-    scheduler = ReduceLROnPlateau(optimizer, 'min')
+    scheduler = ReduceLROnPlateau(optimizer, 'min',verbose = True)
     scheduler.load_state_dict(checkpoint['scheduler_state_dict'])
+    print(sigma)
     dataset = OurDataLoader(data_dir=dataset, task_type='both', transform=image_transform(p=1),
                             pose_sigma=sigma,
                             normalize_heatmap=normalize_heatmap,
@@ -60,13 +61,14 @@ def train_model(workspace, dataset, segmentation_loss, normalize_heatmap=False, 
     training.start()
 
 
-def call_model(workspace, dataset, normalize_heatmap=False, batch_size=2, sigma=default_sigma):
+def call_model(workspace, dataset, normalize_heatmap=False, batch_size=2, sigma=default_sigma, non_img_norm_flag=True):
     checkpoint = torch.load(os.path.join(workspace, 'csl.pth'), map_location=torch.device('cpu'))
     model, device = _load_model(checkpoint['model_state_dict'])
     dataset = OurDataLoader(data_dir=dataset, task_type='both', transform=image_transform(p=1),
                             pose_sigma=sigma,
                             normalize_heatmap=normalize_heatmap,
-                            seg_type='binary')
+                            seg_type='binary',
+                            non_image_norm_flag=non_img_norm_flag)
     if device == 'cuda':
         del checkpoint
         torch.cuda.empty_cache()
@@ -81,10 +83,10 @@ if __name__ == '__main__':
     arg_parser.add_argument("--segloss", "-sl", type=str, choices=['ce', 'dice'], default='ce')
     arg_parser.add_argument("--normalize", "-n", action='store_true', default=False)
     arg_parser.add_argument("--batch", "-b", type=int, default=2)
-    arg_parser.add_argument("--lambdah", "-l", type=int, default=default_lambdah)
+    arg_parser.add_argument("--lambdah", "-l", type=float, default=default_lambdah)
     arg_parser.add_argument("--sigma", "-s", type=int, default=default_sigma)
     arg_parser.add_argument("--non_img_norm_flag", "-in", action='store_false', default=True)
-    
+
     args = arg_parser.parse_args()
 
     if args.command == 'init':
@@ -100,4 +102,4 @@ if __name__ == '__main__':
         train_model(args.workspace, args.dataset, segmentation_loss,
                     normalize_heatmap=args.normalize, batch_size=args.batch, lambdah=args.lambdah, sigma=args.sigma, non_img_norm_flag=args.non_img_norm_flag)
     elif args.command == 'call':
-        call_model(args.workspace, args.dataset, normalize_heatmap=args.normalize, batch_size=args.batch, sigma=args.sigma)
+        call_model(args.workspace, args.dataset, normalize_heatmap=args.normalize, batch_size=args.batch, sigma=args.sigma, non_img_norm_flag=args.non_img_norm_flag)

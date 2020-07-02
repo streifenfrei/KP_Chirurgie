@@ -117,9 +117,9 @@ class OurDataLoader(Dataset):
             augmented = self.transform(**data)
             
             image, both_labels = augmented["image"], augmented["mask"]
-            
+
             if(self.non_image_norm_flag == True):
-                #print(image.shape)
+                print("I'm normalize the image!")
                 tf = image_norm()
                 image = tf(image)
 
@@ -157,7 +157,7 @@ def image_transform(p=1):
         HueSaturationValue(p=0.5),
         ShiftScaleRotate(scale_limit=0.1,rotate_limit=30, border_mode=0)
     ], p=p)
-    
+
 def image_norm():
     return transforms_T.Compose([
         transforms_T.ToTensor(),
@@ -370,7 +370,9 @@ def load_both(img_shape, shapes, class_name_to_id, landmark_name_to_id, pose_sig
     for each_class in landmark_name_to_id:
         seg_image_cls = max_gaussian_help(cls_pose, pose_sigma, landmark_name_to_id[each_class])
         if normalize_heatmap == True:
-            seg_image_cls = seg_image_cls * 2 * np.pi * pose_sigma * pose_sigma
+            seg_image_cls = seg_image_cls *  2 * np.pi * pose_sigma * pose_sigma
+            #am = np.amax(heatmap)
+            #seg_image_cls /= am
         else:
             seg_image_cls = seg_image_cls * np.sqrt(2 * np.pi) * pose_sigma
         #print(seg_image_cls.shape)
@@ -435,8 +437,8 @@ def prepare_batch(batch, segmentation_classes, localisation_classes):
     
 if __name__ == '__main__':
 
-    dataset1 = OurDataLoader(data_dir=r'../data_all/Data1', task_type = 'both', transform=image_transform(p=1), pose_sigma = 15, normalize_heatmap = True, seg_type = 'binary')
-    dataset2 = OurDataLoader(data_dir=r'../data_all/Data2', task_type = 'both', transform=image_transform(p=1), pose_sigma = 15, normalize_heatmap = True, seg_type = 'binary')
+    dataset1 = OurDataLoader(data_dir=r'../data/Data1', task_type = 'both', transform=image_transform(p=1), pose_sigma = 15, normalize_heatmap = True, seg_type = 'binary')
+    dataset2 = OurDataLoader(data_dir=r'../data/Data2', task_type = 'both', transform=image_transform(p=1), pose_sigma = 15, normalize_heatmap = True, seg_type = 'binary')
     
     # load 1 dataset, or as list: both are ok 
     #train_loader, validation_loader = train_val_dataset(dataset2, validation_split = 0.3, train_batch_size = 2, valid_batch_size = 2, shuffle_dataset = True)

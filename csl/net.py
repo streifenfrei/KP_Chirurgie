@@ -63,9 +63,19 @@ class CSLNet(nn.Module):
         self.segmentation_layer = conv3x3(self.inplanes, 1) # indeed remove the relu
         self.pre_localisation_layer = self._make_layer(32, sampling=self._Sampling.none_relu)
         self.inplanes = 33
-        #self.localisation_layer = self._make_layer(localisation_classes, sampling=self._Sampling.none_relu)
-        self.localisation_layer = nn.Sequential(conv3x3(self.inplanes, localisation_classes), nn.Sigmoid())
+        self.localisation_layer = self._make_layer(localisation_classes, sampling=self._Sampling.none_relu)
+        #self.localisation_layer = nn.Sequential(conv3x3(self.inplanes, localisation_classes), nn.Sigmoid())
         self.localisation_classes = localisation_classes
+        _dropout = 0.5
+        self.dropout_en1 = nn.Dropout(p=_dropout)
+        self.dropout_en2 = nn.Dropout(p=_dropout)
+        self.dropout_en3 = nn.Dropout(p=_dropout)
+        self.dropout_en4 = nn.Dropout(p=_dropout)
+
+        self.dropout_de1 = nn.Dropout(p=_dropout)
+        self.dropout_de2 = nn.Dropout(p=_dropout)
+        self.dropout_de3 = nn.Dropout(p=_dropout)
+        self.dropout_de4 = nn.Dropout(p=_dropout)
 
     def _make_bottleneck_block(self, planes, downsample=False, stride=1):
         return Bottleneck(self.inplanes, planes,
@@ -112,10 +122,11 @@ class CSLNet(nn.Module):
     def visualize(self, dataset, device='cpu', batch_size=2):
         loader = train_val_dataset(dataset, validation_split=0, train_batch_size=batch_size,
                                    valid_batch_size=batch_size, shuffle_dataset=True)[0]
-
         self.eval()
         import matplotlib.pyplot as plt
+        i = 0
         for batch in loader:
+            i += 1
             fig = plt.figure(figsize=(12, 6))
             inputs, target = batch
             fig.add_subplot(2, 5, 1)
@@ -125,19 +136,31 @@ class CSLNet(nn.Module):
             segmentation, localisation = self(inputs)
             segmentation = segmentation.cpu().detach()
             localisation = localisation.cpu().detach()
+            localisation = localisation.numpy()
 
             batch_size, seg_classes, width, height = list(segmentation.shape)
             for seg_class in range(seg_classes):
                 fig.add_subplot(2, 5, fig_counter)
                 fig_counter += 1
-                plt.imshow(segmentation[0, seg_class, :, :].view(width, height))
+                plt.imshow(nn.Sigmoid()(segmentation[0, seg_class, :, :].view(width, height)))
 
             batch_size, loc_classes, width, height = list(localisation.shape)
-            for loc_class in range(loc_classes):
+            print(batch_size, loc_classes, width, height)
+            for loc_class_ in range(loc_classes):
                 fig.add_subplot(2, 5, fig_counter)
                 fig_counter += 1
-                plt.imshow(localisation[0, loc_class, :, :].view(width, height))
-            plt.show()
+                for row in localisation[0, loc_class_, :, :]:
+                    #for col in row:
+                    print(np.max(row))
+                    print('\n')
+                print('========')
+                plt.imshow(localisation[0, loc_class_, :, :])
+            print(target.shape)
+            for loc_class_ in range(seg_classes, loc_classes + 1):
+                fig.add_subplot(2, 5, fig_counter)
+                fig_counter += 1
+                plt.imshow(target[0, :, :, loc_class_])
+            plt.savefig('test' + str(i) + '.png')
 
     def forward(self, x):
         x = self.conv1(x)
@@ -147,10 +170,14 @@ class CSLNet(nn.Module):
 
         # encoder
         x = enc1 = self.encoding_layer1(x)
-
+        x = self.dropout_en1(x)
         x = enc2 = self.encoding_layer2(x)
+        x = self.dropout_en2(x)
         x = enc3 = self.encoding_layer3(x)
+        x = self.dropout_en3(x)
+
         x = self.encoding_layer4(x)
+        x = self.dropout_en4(x)
 
         # bottleneck
         x = self.bottleneck_layer(x)
@@ -159,13 +186,20 @@ class CSLNet(nn.Module):
         x = self.decoding_layer1_1(x)
         dec1_2 = self.decoding_layer1_2(enc3)
         x = x.add(dec1_2)
+        x = self.dropout_de1(x)
+
         x = self.decoding_layer2_1(x)
         dec2_2 = self.decoding_layer2_2(enc2)
         x = x.add(dec2_2)
+        x = self.dropout_de2(x)
+
         x = self.decoding_layer3_1(x)
         dec3_2 = self.decoding_layer3_2(enc1)
         x = x.add(dec3_2)
+        x = self.dropout_de3(x)
+
         x = self.decoding_layer4(x)
+        x = self.dropout_de4(x)
 
         # csl part
         segmentation = self.segmentation_layer(x)
@@ -251,10 +285,21 @@ class Training:
             else:
                 raise ValueError
             segmentation_loss = segmentation_loss_function(output_segmentation, target_segmentation)
+            
+            # ==== huxi loss ====
+            weights = torch.where(target_localisation > 0.0001, torch.full_like(target_localisation, 5), torch.full_like(target_localisation, 1))
+
+            all_mse = (output_localisation - target_localisation)**2
+            weighted_mse = all_mse * weights
+            localisation_loss = weighted_mse.sum()/ (
+                    localisation_classes * batch_size) # or sum over whatever dimensions
+            #print(localisation_loss.shape)
             # localization
-            localisation_loss_function = nn.MSELoss(reduction='sum')
-            localisation_loss = localisation_loss_function(output_localisation, target_localisation) / (
-                    localisation_classes * batch_size)
+            #localisation_loss_function = nn.MSELoss(reduction='sum')
+            #localisation_loss = localisation_loss_function(output_localisation, target_localisation) / (
+            #        localisation_classes * batch_size)
+            #return 0 + (self.lambdah * localisation_loss), 0, localisation_loss.item()
+
             return segmentation_loss + (
                     self.lambdah * localisation_loss), segmentation_loss.item(), localisation_loss.item()
 
@@ -304,7 +349,9 @@ class Training:
                     loss = self._train_step(epoch, index, batch)
                     losses.append(loss)
                 writer.add_scalar('Loss/training', sum(losses) / len(losses), epoch)
+
                 # validation
+
                 self.model.eval()
                 losses = []
                 for index, batch in enumerate(val_loader):
@@ -316,6 +363,7 @@ class Training:
                 writer.add_scalar('Loss/validation', validation_loss, epoch)
                 self.scheduler.step(validation_loss)
                 writer.add_scalar('learning_rate', self.optimizer.param_groups[0]['lr'], epoch)
+
                 # saving
                 if not epoch % self.save_rate:
                     # move old model to older_models directory
