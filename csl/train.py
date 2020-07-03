@@ -9,14 +9,14 @@ from dataLoader import image_transform, OurDataLoader
 # model
 localisation_classes = 4
 # optimizer
-learning_rate = 10e-5
+default_learning_rate = 10e-5
 momentum = 0.9  # for SGD
 # loss
 default_sigma = 15
 default_lambdah = 1
 
 
-def init_model(save_file):
+def init_model(save_file, learning_rate):
     model = CSLNet(localisation_classes=localisation_classes)
     model.load_state_dict(torch.load(os.path.abspath("weights/resnet50-19c8e357.pth")), strict=False)
     optimizer = torch.optim.Adam(model.parameters(), lr=learning_rate)
@@ -39,14 +39,13 @@ def _load_model(state_dict):
     return model, device
 
 
-def train_model(workspace, dataset, segmentation_loss, normalize_heatmap=False, batch_size=2, lambdah=default_lambdah, sigma=default_sigma, non_img_norm_flag=True):
+def train_model(workspace, dataset, segmentation_loss, normalize_heatmap=False, batch_size=2, lambdah=default_lambdah, sigma=default_sigma, non_img_norm_flag=True, learning_rate=default_learning_rate):
     checkpoint = torch.load(os.path.join(workspace, 'csl.pth'))
     model, device = _load_model(checkpoint['model_state_dict'])
     optimizer = torch.optim.Adam(model.parameters(), lr=learning_rate)
     optimizer.load_state_dict(checkpoint['optimizer_state_dict'])
     scheduler = ReduceLROnPlateau(optimizer, 'min',verbose = True)
     scheduler.load_state_dict(checkpoint['scheduler_state_dict'])
-    print(sigma)
     dataset = OurDataLoader(data_dir=dataset, task_type='both', transform=image_transform(p=1),
                             pose_sigma=sigma,
                             normalize_heatmap=normalize_heatmap,
@@ -86,12 +85,13 @@ if __name__ == '__main__':
     arg_parser.add_argument("--lambdah", "-l", type=float, default=default_lambdah)
     arg_parser.add_argument("--sigma", "-s", type=int, default=default_sigma)
     arg_parser.add_argument("--non_img_norm_flag", "-in", action='store_false', default=True)
+    arg_parser.add_argument("--learningrate", "-lr", type=float, default=default_learning_rate)
 
     args = arg_parser.parse_args()
 
     if args.command == 'init':
         model_out = os.path.join(args.workspace, 'csl.pth')
-        init_model(model_out)
+        init_model(model_out, args.learningrate)
     elif args.command == 'train':
         if args.segloss == 'ce':
             segmentation_loss = Training.LossFunction.SegmentationLoss.cross_entropy
@@ -100,6 +100,6 @@ if __name__ == '__main__':
         else:
             raise ValueError
         train_model(args.workspace, args.dataset, segmentation_loss,
-                    normalize_heatmap=args.normalize, batch_size=args.batch, lambdah=args.lambdah, sigma=args.sigma, non_img_norm_flag=args.non_img_norm_flag)
+                    normalize_heatmap=args.normalize, batch_size=args.batch, lambdah=args.lambdah, sigma=args.sigma, non_img_norm_flag=args.non_img_norm_flag, learning_rate=args.learningrate)
     elif args.command == 'call':
         call_model(args.workspace, args.dataset, normalize_heatmap=args.normalize, batch_size=args.batch, sigma=args.sigma, non_img_norm_flag=args.non_img_norm_flag)

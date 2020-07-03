@@ -214,7 +214,7 @@ class Training:
     def __init__(self, model: CSLNet, dataset: OurDataLoader, optimizer, scheduler,
                  segmentation_loss, lambdah: int = 1,
                  start_epoch: int = 0, max_epochs: int = 100000, save_rate: int = 15,
-                 workspace: str = '', device: str = "cpu", batch_size: int = 2, validation_split=0.3):
+                 workspace: str = '', device: str = "cpu", batch_size: int = 2, validation_split=0.1):
         self.model = model
         self.workspace = workspace
         self.device = device
