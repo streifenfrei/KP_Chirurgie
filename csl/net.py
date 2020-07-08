@@ -127,9 +127,9 @@ class CSLNet(nn.Module):
         i = 0
         for batch in loader:
             i += 1
-            fig = plt.figure(figsize=(12, 6))
+            fig = plt.figure(figsize=(12, 9))
             inputs, target = batch
-            fig.add_subplot(2, 5, 1)
+            fig.add_subplot(3, 4, 1)
             plt.imshow(inputs[0].view(inputs[0].shape[0], inputs[0].shape[1], inputs[0].shape[2]).permute(1, 2, 0))
             fig_counter = 2
             inputs = inputs.to(device)
@@ -140,14 +140,15 @@ class CSLNet(nn.Module):
 
             batch_size, seg_classes, width, height = list(segmentation.shape)
             for seg_class in range(seg_classes):
-                fig.add_subplot(2, 5, fig_counter)
+                fig.add_subplot(3, 4, fig_counter)
                 fig_counter += 1
                 plt.imshow(nn.Sigmoid()(segmentation[0, seg_class, :, :].view(width, height)))
 
             batch_size, loc_classes, width, height = list(localisation.shape)
             print(batch_size, loc_classes, width, height)
+            fig_counter = 5
             for loc_class_ in range(loc_classes):
-                fig.add_subplot(2, 5, fig_counter)
+                fig.add_subplot(3, 4, fig_counter)
                 fig_counter += 1
                 for row in localisation[0, loc_class_, :, :]:
                     #for col in row:
@@ -157,7 +158,7 @@ class CSLNet(nn.Module):
                 plt.imshow(localisation[0, loc_class_, :, :])
             print(target.shape)
             for loc_class_ in range(seg_classes, loc_classes + 1):
-                fig.add_subplot(2, 5, fig_counter)
+                fig.add_subplot(3, 4, fig_counter)
                 fig_counter += 1
                 plt.imshow(target[0, :, :, loc_class_])
             plt.savefig('test' + str(i) + '.png')
