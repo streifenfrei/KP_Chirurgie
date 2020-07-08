@@ -121,7 +121,7 @@ def get_balloon_dicts(img_dir: str,
 
 
 # if __name__ == '__main__':
-def register_dataset_and_metadata(path_to_data:str,
+def register_dataset_and_metadata(path_to_data: str,
                                   classes_list: List[str]) -> detectron2.data.catalog.Metadata:
     """
     Registrs the dataset according to the https://detectron2.readthedocs.io/tutorials/datasets.html
@@ -199,9 +199,9 @@ def start_training(train_name: str = "instruments_train",
 def inference_on_trained_mode(instruments_metadata,
                               path_to_data,
                               cfg,
-                              model_location="model_final.pth")->None:
+                              model_location="model_final.pth") -> None:
     cfg.MODEL.DEVICE = 'cuda' if torch.cuda.is_available() else 'cpu'
-     # = 'cpu'
+    # = 'cpu'
     cfg.MODEL.WEIGHTS = os.path.join(cfg.OUTPUT_DIR, model_location)
     cfg.MODEL.ROI_HEADS.SCORE_THRESH_TEST = 0.5  # set the testing threshold for this model
     cfg.DATASETS.TEST = ("instruments_val",)
@@ -220,7 +220,6 @@ def inference_on_trained_mode(instruments_metadata,
         out = v.draw_instance_predictions(outputs["instances"].to("cpu"))
         cv2.imshow('image', out.get_image()[:, :, ::-1])
         cv2.waitKey(0)
-
 
 
 def main():

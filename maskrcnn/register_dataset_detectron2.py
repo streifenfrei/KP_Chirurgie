@@ -1,5 +1,7 @@
 import os
 import json
+from argparse import ArgumentParser
+
 import numpy as np
 from detectron2.structures import BoxMode
 import dataLoader as dl
@@ -131,11 +133,16 @@ def create_desription_json_for_detectron_registration(json_folder: List[str],
         json.dump(for_json, f)
     return for_json
 
+if __name__ == "__main__":
+    arg_parser = ArgumentParser()
+    arg_parser.add_argument("--dataset", "-d", type=str, default='../dataset')
+    arg_parser.add_argument("--output", "-o", type=str, default='../dataset')
 
-# json_img  = glob.glob('../dataset/*.json')
-json_img = sorted(glob.glob('/Users/chernykh_alexander/Yandex.Disk.localized/CloudTUD/Komp_CHRIRURGIE/instruments/val_json/*.json'))
+    args = arg_parser.parse_args()
+    # json_img  = glob.glob('../dataset/*.json')
+    json_img = sorted(glob.glob(args.dataset + "/*.json"))
 
-json_back = create_desription_json_for_detectron_registration(json_img,
-                                                              path_to_save='/Users/chernykh_alexander/Yandex.Disk.localized/CloudTUD/Komp_CHRIRURGIE/instruments/val/',
-                                                              save_image=False)
-pprint(json_back)
+    json_back = create_desription_json_for_detectron_registration(json_img,
+                                                                  path_to_save=args.output,
+                                                                  save_image=False)
+    pprint(json_back)
