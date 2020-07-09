@@ -1,3 +1,5 @@
+from argparse import ArgumentParser
+
 import torch, torchvision
 import cython
 import detectron2
@@ -223,10 +225,13 @@ def inference_on_trained_mode(instruments_metadata,
 
 
 def main():
+    arg_parser = ArgumentParser()
+    arg_parser.add_argument("--dataset", "-d", type=str, default='../dataset')
+
+    args = arg_parser.parse_args()
     classes_list = ['scissors', 'needle_holder', 'grasper']
     # path_to_data = "../dataset/instruments/"
-    path_to_data = "/Users/chernykh_alexander/Yandex.Disk.localized/CloudTUD/Komp_CHRIRURGIE/instruments/"
-    instruments_metadata = register_dataset_and_metadata(path_to_data, classes_list)
+    instruments_metadata = register_dataset_and_metadata(args.dataset, classes_list)
     # path_to_training_data = "../dataset/instruments/train"
     path_to_training_data = "/Users/chernykh_alexander/Yandex.Disk.localized/CloudTUD/Komp_CHRIRURGIE/instruments/train"
     path_to_val_data = "/Users/chernykh_alexander/Yandex.Disk.localized/CloudTUD/Komp_CHRIRURGIE/instruments/val"
@@ -235,7 +240,7 @@ def main():
 
     # inference_old_model()
     cfg = start_training(train_name="instruments_train", classes_list=['scissors', 'needle_holder', 'grasper'])
-    inference_on_trained_mode(instruments_metadata, path_to_data, cfg=cfg, model_location="model_final.pth")
+    inference_on_trained_mode(instruments_metadata, args.dataset, cfg=cfg, model_location="model_final.pth")
 
 
 if __name__ == "__main__":

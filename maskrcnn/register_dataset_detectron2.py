@@ -13,11 +13,11 @@ from PIL import Image
 # Detectron 2 requires an integer instead of a class label as a string
 # This is a dict for mapping the class labels to integers
 mapping = {
-        'scissors': 1000,
-        'needle_holder': 1001,
-        'needleholder':1001,
-        'grasper':1002
-    }
+    'scissors': 1000,
+    'needle_holder': 1001,
+    'needleholder': 1001,
+    'grasper': 1002
+}
 
 
 def save_img_from_base(filename: str, img_data: np.ndarray, path_to_save: str) -> None:
@@ -79,7 +79,7 @@ def create_desription_single_file(json_file: str, for_json: dict, path_to_save: 
             filename = filename_without_extension + '.png'
             for_json[str(filename)] = single_image
             single_image['fileref'] = ""
-            single_image['filename']= filename
+            single_image['filename'] = filename
             single_image['size'] = img.size
             single_image['height'] = height
             single_image['width'] = width
@@ -132,6 +132,7 @@ def create_desription_json_for_detectron_registration(json_folder: List[str],
     with open(f'{path_to_save}/dataset_registration_detectron2.json', 'w') as f:
         json.dump(for_json, f)
     return for_json
+
 
 if __name__ == "__main__":
     arg_parser = ArgumentParser()
