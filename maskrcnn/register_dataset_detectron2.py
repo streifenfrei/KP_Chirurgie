@@ -1,5 +1,7 @@
 import os
 import json
+from argparse import ArgumentParser
+
 import numpy as np
 from detectron2.structures import BoxMode
 import dataLoader as dl
@@ -11,11 +13,11 @@ from PIL import Image
 # Detectron 2 requires an integer instead of a class label as a string
 # This is a dict for mapping the class labels to integers
 mapping = {
-        'scissors': 0,
-        'needle_holder': 1,
-        'needleholder':1,
-        'grasper':2
-    }
+    'scissors': 1000,
+    'needle_holder': 1001,
+    'needleholder': 1001,
+    'grasper': 1002
+}
 
 
 def save_img_from_base(filename: str, img_data: np.ndarray, path_to_save: str) -> None:
@@ -77,7 +79,7 @@ def create_desription_single_file(json_file: str, for_json: dict, path_to_save: 
             filename = filename_without_extension + '.png'
             for_json[str(filename)] = single_image
             single_image['fileref'] = ""
-            single_image['filename']= filename
+            single_image['filename'] = filename
             single_image['size'] = img.size
             single_image['height'] = height
             single_image['width'] = width
@@ -132,10 +134,16 @@ def create_desription_json_for_detectron_registration(json_folder: List[str],
     return for_json
 
 
-# json_img  = glob.glob('../dataset/*.json')
-json_img = sorted(glob.glob('/Users/chernykh_alexander/Yandex.Disk.localized/CloudTUD/Komp_CHRIRURGIE/instruments/train_json/*.json'))
+if __name__ == "__main__":
+    arg_parser = ArgumentParser()
+    arg_parser.add_argument("--dataset", "-d", type=str, default='../dataset')
+    arg_parser.add_argument("--output", "-o", type=str, default='../dataset')
 
-json_back = create_desription_json_for_detectron_registration(json_img,
-                                                              path_to_save='/Users/chernykh_alexander/Yandex.Disk.localized/CloudTUD/Komp_CHRIRURGIE/instruments/train/',
-                                                              save_image=False)
-pprint(json_back)
+    args = arg_parser.parse_args()
+    # json_img  = glob.glob('../dataset/*.json')
+    json_img = sorted(glob.glob(args.dataset + "/*.json"))
+
+    json_back = create_desription_json_for_detectron_registration(json_img,
+                                                                  path_to_save=args.output,
+                                                                  save_image=False)
+    pprint(json_back)

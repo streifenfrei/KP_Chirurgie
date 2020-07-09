@@ -1,3 +1,5 @@
+from argparse import ArgumentParser
+
 import torch, torchvision
 import cython
 import detectron2
@@ -27,8 +29,7 @@ from detectron2.structures import BoxMode
 
 from detectron2.utils.events import get_event_storage
 
-# saving all logs
-setup_logger('./output/saved_logs.log')
+# inside the model:
 
 
 def inference_old_model(image_path: str = "../dataset/frame_00000.png") -> None:
@@ -119,7 +120,7 @@ def get_balloon_dicts(img_dir: str,
 
 
 # if __name__ == '__main__':
-def register_dataset_and_metadata(path_to_data:str,
+def register_dataset_and_metadata(path_to_data: str,
                                   classes_list: List[str]) -> detectron2.data.catalog.Metadata:
     """
     Registrs the dataset according to the https://detectron2.readthedocs.io/tutorials/datasets.html
@@ -138,9 +139,9 @@ def register_dataset_and_metadata(path_to_data:str,
 
     # classes_list = ['scissors', 'needle_holder', 'grasper']
     # path_to_data = "/Users/chernykh_alexander/Yandex.Disk.localized/CloudTUD/Komp_CHRIRURGIE/instruments/"
-    for data_set in ["train", "val"]:
-        DatasetCatalog.register("instruments_" + data_set, lambda data_set=data_set: get_balloon_dicts(path_to_data + data_set))
-        MetadataCatalog.get("instruments_" + data_set).set(thing_classes=classes_list)
+    for d in ["train", "val"]:
+        DatasetCatalog.register("instruments_" + d, lambda d=d: get_balloon_dicts(path_to_data + d))
+        MetadataCatalog.get("instruments_" + d).set(thing_classes=classes_list)
     instruments_metadata = MetadataCatalog.get("instruments_train")
     # instruments_metadata_val = MetadataCatalog.get("instruments_val")
     return instruments_metadata
@@ -171,43 +172,28 @@ def test_registration(instruments_metadata: detectron2.data.catalog.Metadata,
         cv2.waitKey(0)
 
 
-def start_training(train_name: str = "instruments_train",
-                   classes_list: List[str] = ['scissors', 'needle_holder', 'grasper']):
+def load_config(config_path: str = None):
+    assert config_path
     cfg = get_cfg()
-    cfg.MODEL.DEVICE = 'cuda' if torch.cuda.is_available() else 'cpu'
-    cfg.merge_from_file(model_zoo.get_config_file("COCO-InstanceSegmentation/mask_rcnn_R_50_FPN_3x.yaml"))
-    cfg.DATASETS.TRAIN = (train_name,)
-    cfg.DATASETS.TEST = ()
-    cfg.DATALOADER.NUM_WORKERS = 2
-    cfg.MODEL.WEIGHTS = model_zoo.get_checkpoint_url(
-        "COCO-InstanceSegmentation/mask_rcnn_R_50_FPN_3x.yaml")  # Let training initialize from model zoo
-    cfg.SOLVER.IMS_PER_BATCH = 2
-    cfg.SOLVER.BASE_LR = 0.00025  # pick a good LR
-    cfg.SOLVER.MAX_ITER = 400002  # 300 iterations seems good enough for this toy dataset; you may need to train longer for a practical dataset
-    cfg.MODEL.ROI_HEADS.BATCH_SIZE_PER_IMAGE = 128  # faster, and good enough for this toy dataset (default: 512)
-    cfg.MODEL.ROI_HEADS.NUM_CLASSES = len(classes_list)
-
+    cfg.merge_from_file(config_path)
     os.makedirs(cfg.OUTPUT_DIR, exist_ok=True)
+    return cfg
+
+
+def start_training(cfg):
     trainer = DefaultTrainer(cfg)
     trainer.resume_or_load(resume=True)
     trainer.train()
-    return cfg
 
 
 def inference_on_trained_mode(instruments_metadata,
                               path_to_data,
-                              cfg,
-                              model_location="model_final.pth")->None:
+                              cfg) -> None:
     cfg.MODEL.DEVICE = 'cuda' if torch.cuda.is_available() else 'cpu'
-     # = 'cpu'
-    cfg.MODEL.WEIGHTS = os.path.join(cfg.OUTPUT_DIR, model_location)
-    cfg.MODEL.ROI_HEADS.SCORE_THRESH_TEST = 0.5  # set the testing threshold for this model
-    cfg.DATASETS.TEST = ("instruments_val",)
-
     predictor = DefaultPredictor(cfg)
 
     dataset_dicts = get_balloon_dicts(f"{path_to_data}/val")
-    for d in random.sample(dataset_dicts, 10):
+    for d in random.sample(dataset_dicts, 1):
         im = cv2.imread(d["file_name"])
         outputs = predictor(im)
         v = Visualizer(im[:, :, ::-1],
@@ -220,28 +206,20 @@ def inference_on_trained_mode(instruments_metadata,
         cv2.waitKey(0)
 
 
-def point_rend_net_training():
-    cfg = get_cfg()
-    # Add PointRend-specific config
-    point_rend.add_pointrend_config(cfg)
-    # Load a config from file
-    cfg.merge_from_file(
-        "detectron2_repo/projects/PointRend/configs/InstanceSegmentation/pointrend_rcnn_R_50_FPN_3x_coco.yaml")
-    cfg.MODEL.ROI_HEADS.SCORE_THRESH_TEST = 0.5  # set threshold for this model
-    # Use a model from PointRend model zoo: https://github.com/facebookresearch/detectron2/tree/master/projects/PointRend#pretrained-models
-    cfg.MODEL.WEIGHTS = "detectron2://PointRend/InstanceSegmentation/pointrend_rcnn_R_50_FPN_3x_coco/164955410/model_final_3c3198.pkl"
-    predictor = DefaultPredictor(cfg)
-    outputs = predictor(im)
-
-
-
-
-
 def main():
+    arg_parser = ArgumentParser()
+    arg_parser.add_argument("--config", "-c", type=str, default='configs/pretrained.yaml')
+    arg_parser.add_argument("--dataset", "-d", type=str, default='../dataset')
+
+    args = arg_parser.parse_args()
+    cfg = load_config(config_path=args.config)
+
+    # saving all logs
+    setup_logger(os.path.join(cfg.OUTPUT_DIR, 'saved_logs.log'))
+
     classes_list = ['scissors', 'needle_holder', 'grasper']
     # path_to_data = "../dataset/instruments/"
-    path_to_data = "/Users/chernykh_alexander/Yandex.Disk.localized/CloudTUD/Komp_CHRIRURGIE/instruments/"
-    instruments_metadata = register_dataset_and_metadata(path_to_data, classes_list)
+    instruments_metadata = register_dataset_and_metadata(args.dataset, classes_list)
     # path_to_training_data = "../dataset/instruments/train"
     path_to_training_data = "/Users/chernykh_alexander/Yandex.Disk.localized/CloudTUD/Komp_CHRIRURGIE/instruments/train"
     path_to_val_data = "/Users/chernykh_alexander/Yandex.Disk.localized/CloudTUD/Komp_CHRIRURGIE/instruments/val"
@@ -249,8 +227,8 @@ def main():
     #                   json_with_desription_name="dataset_registration_detectron2.json")
 
     # inference_old_model()
-    cfg = start_training(train_name="instruments_train", classes_list=['scissors', 'needle_holder', 'grasper'])
-    inference_on_trained_mode(instruments_metadata, path_to_data, cfg=cfg, model_location="model_final.pth")
+    start_training(cfg)
+    inference_on_trained_mode(instruments_metadata, args.dataset, cfg=cfg)
 
 
 if __name__ == "__main__":

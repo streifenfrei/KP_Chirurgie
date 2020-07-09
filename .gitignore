@@ -1,2 +1,7 @@
-dataset
 maskrcnn/output
+.idea
+out
+dataset
+venv
+__pycache__
+
