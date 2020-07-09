@@ -31,9 +31,6 @@ from detectron2.utils.events import get_event_storage
 
 # inside the model:
 
-# saving all logs
-setup_logger('./output/saved_logs.log')
-
 
 def inference_old_model(image_path: str = "../dataset/frame_00000.png") -> None:
     """
@@ -175,43 +172,28 @@ def test_registration(instruments_metadata: detectron2.data.catalog.Metadata,
         cv2.waitKey(0)
 
 
-def start_training(train_name: str = "instruments_train",
-                   classes_list: List[str] = ['scissors', 'needle_holder', 'grasper']):
+def load_config(config_path: str = None):
+    assert config_path
     cfg = get_cfg()
-    cfg.MODEL.DEVICE = 'cuda' if torch.cuda.is_available() else 'cpu'
-    cfg.merge_from_file(model_zoo.get_config_file("COCO-InstanceSegmentation/mask_rcnn_R_50_FPN_3x.yaml"))
-    cfg.DATASETS.TRAIN = (train_name,)
-    cfg.DATASETS.TEST = ()
-    cfg.DATALOADER.NUM_WORKERS = 2
-    cfg.MODEL.WEIGHTS = model_zoo.get_checkpoint_url(
-        "COCO-InstanceSegmentation/mask_rcnn_R_50_FPN_3x.yaml")  # Let training initialize from model zoo
-    cfg.SOLVER.IMS_PER_BATCH = 2
-    cfg.SOLVER.BASE_LR = 0.00025  # pick a good LR
-    cfg.SOLVER.MAX_ITER = 400001  # 300 iterations seems good enough for this toy dataset; you may need to train longer for a practical dataset
-    cfg.MODEL.ROI_HEADS.BATCH_SIZE_PER_IMAGE = 128  # faster, and good enough for this toy dataset (default: 512)
-    cfg.MODEL.ROI_HEADS.NUM_CLASSES = len(classes_list)
-
+    cfg.merge_from_file(config_path)
     os.makedirs(cfg.OUTPUT_DIR, exist_ok=True)
+    return cfg
+
+
+def start_training(cfg):
     trainer = DefaultTrainer(cfg)
     trainer.resume_or_load(resume=True)
     trainer.train()
-    return cfg
 
 
 def inference_on_trained_mode(instruments_metadata,
                               path_to_data,
-                              cfg,
-                              model_location="model_final.pth") -> None:
+                              cfg) -> None:
     cfg.MODEL.DEVICE = 'cuda' if torch.cuda.is_available() else 'cpu'
-    # = 'cpu'
-    cfg.MODEL.WEIGHTS = os.path.join(cfg.OUTPUT_DIR, model_location)
-    cfg.MODEL.ROI_HEADS.SCORE_THRESH_TEST = 0.5  # set the testing threshold for this model
-    cfg.DATASETS.TEST = ("instruments_val",)
-
     predictor = DefaultPredictor(cfg)
 
     dataset_dicts = get_balloon_dicts(f"{path_to_data}/val")
-    for d in random.sample(dataset_dicts, 10):
+    for d in random.sample(dataset_dicts, 1):
         im = cv2.imread(d["file_name"])
         outputs = predictor(im)
         v = Visualizer(im[:, :, ::-1],
@@ -226,9 +208,15 @@ def inference_on_trained_mode(instruments_metadata,
 
 def main():
     arg_parser = ArgumentParser()
+    arg_parser.add_argument("--config", "-c", type=str, default='configs/pretrained.yaml')
     arg_parser.add_argument("--dataset", "-d", type=str, default='../dataset')
 
     args = arg_parser.parse_args()
+    cfg = load_config(config_path=args.config)
+
+    # saving all logs
+    setup_logger(os.path.join(cfg.OUTPUT_DIR, 'saved_logs.log'))
+
     classes_list = ['scissors', 'needle_holder', 'grasper']
     # path_to_data = "../dataset/instruments/"
     instruments_metadata = register_dataset_and_metadata(args.dataset, classes_list)
@@ -239,8 +227,8 @@ def main():
     #                   json_with_desription_name="dataset_registration_detectron2.json")
 
     # inference_old_model()
-    cfg = start_training(train_name="instruments_train", classes_list=['scissors', 'needle_holder', 'grasper'])
-    inference_on_trained_mode(instruments_metadata, args.dataset, cfg=cfg, model_location="model_final.pth")
+    start_training(cfg)
+    inference_on_trained_mode(instruments_metadata, args.dataset, cfg=cfg)
 
 
 if __name__ == "__main__":
