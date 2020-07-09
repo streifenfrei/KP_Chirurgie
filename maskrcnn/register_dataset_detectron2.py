@@ -11,10 +11,10 @@ from PIL import Image
 # Detectron 2 requires an integer instead of a class label as a string
 # This is a dict for mapping the class labels to integers
 mapping = {
-        'scissors': 1000,
-        'needle_holder': 1001,
-        'needleholder':1001,
-        'grasper':1002
+        'scissors': 0,
+        'needle_holder': 1,
+        'needleholder':1,
+        'grasper':2
     }
 
 
@@ -133,9 +133,9 @@ def create_desription_json_for_detectron_registration(json_folder: List[str],
 
 
 # json_img  = glob.glob('../dataset/*.json')
-json_img = sorted(glob.glob('/Users/chernykh_alexander/Yandex.Disk.localized/CloudTUD/Komp_CHRIRURGIE/instruments/val_json/*.json'))
+json_img = sorted(glob.glob('/Users/chernykh_alexander/Yandex.Disk.localized/CloudTUD/Komp_CHRIRURGIE/instruments/train_json/*.json'))
 
 json_back = create_desription_json_for_detectron_registration(json_img,
-                                                              path_to_save='/Users/chernykh_alexander/Yandex.Disk.localized/CloudTUD/Komp_CHRIRURGIE/instruments/val/',
+                                                              path_to_save='/Users/chernykh_alexander/Yandex.Disk.localized/CloudTUD/Komp_CHRIRURGIE/instruments/train/',
                                                               save_image=False)
 pprint(json_back)

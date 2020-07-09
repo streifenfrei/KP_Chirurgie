@@ -27,8 +27,6 @@ from detectron2.structures import BoxMode
 
 from detectron2.utils.events import get_event_storage
 
-# inside the model:
-
 # saving all logs
 setup_logger('./output/saved_logs.log')
 
@@ -140,9 +138,9 @@ def register_dataset_and_metadata(path_to_data:str,
 
     # classes_list = ['scissors', 'needle_holder', 'grasper']
     # path_to_data = "/Users/chernykh_alexander/Yandex.Disk.localized/CloudTUD/Komp_CHRIRURGIE/instruments/"
-    for d in ["train", "val"]:
-        DatasetCatalog.register("instruments_" + d, lambda d=d: get_balloon_dicts(path_to_data + d))
-        MetadataCatalog.get("instruments_" + d).set(thing_classes=classes_list)
+    for data_set in ["train", "val"]:
+        DatasetCatalog.register("instruments_" + data_set, lambda data_set=data_set: get_balloon_dicts(path_to_data + data_set))
+        MetadataCatalog.get("instruments_" + data_set).set(thing_classes=classes_list)
     instruments_metadata = MetadataCatalog.get("instruments_train")
     # instruments_metadata_val = MetadataCatalog.get("instruments_val")
     return instruments_metadata
@@ -185,7 +183,7 @@ def start_training(train_name: str = "instruments_train",
         "COCO-InstanceSegmentation/mask_rcnn_R_50_FPN_3x.yaml")  # Let training initialize from model zoo
     cfg.SOLVER.IMS_PER_BATCH = 2
     cfg.SOLVER.BASE_LR = 0.00025  # pick a good LR
-    cfg.SOLVER.MAX_ITER = 400001  # 300 iterations seems good enough for this toy dataset; you may need to train longer for a practical dataset
+    cfg.SOLVER.MAX_ITER = 400002  # 300 iterations seems good enough for this toy dataset; you may need to train longer for a practical dataset
     cfg.MODEL.ROI_HEADS.BATCH_SIZE_PER_IMAGE = 128  # faster, and good enough for this toy dataset (default: 512)
     cfg.MODEL.ROI_HEADS.NUM_CLASSES = len(classes_list)
 
@@ -220,6 +218,22 @@ def inference_on_trained_mode(instruments_metadata,
         out = v.draw_instance_predictions(outputs["instances"].to("cpu"))
         cv2.imshow('image', out.get_image()[:, :, ::-1])
         cv2.waitKey(0)
+
+
+def point_rend_net_training():
+    cfg = get_cfg()
+    # Add PointRend-specific config
+    point_rend.add_pointrend_config(cfg)
+    # Load a config from file
+    cfg.merge_from_file(
+        "detectron2_repo/projects/PointRend/configs/InstanceSegmentation/pointrend_rcnn_R_50_FPN_3x_coco.yaml")
+    cfg.MODEL.ROI_HEADS.SCORE_THRESH_TEST = 0.5  # set threshold for this model
+    # Use a model from PointRend model zoo: https://github.com/facebookresearch/detectron2/tree/master/projects/PointRend#pretrained-models
+    cfg.MODEL.WEIGHTS = "detectron2://PointRend/InstanceSegmentation/pointrend_rcnn_R_50_FPN_3x_coco/164955410/model_final_3c3198.pkl"
+    predictor = DefaultPredictor(cfg)
+    outputs = predictor(im)
+
+
 
 
 
