@@ -43,7 +43,7 @@ def non_max_suppression(img_landmark):
 def nearest_neighbors(target_xy, array):
     return np.argsort(np.array([np.linalg.norm(target_xy-x) for x in array]))[0]
     
-def findNN(image_label, image_predicted):
+def findNN(image_label, image_predicted, save_name):
     xy_label = non_max_suppression(image_label)
     xy_predict = non_max_suppression(image_predicted)
     
@@ -65,7 +65,7 @@ def findNN(image_label, image_predicted):
         plt.plot(pair[0][0],pair[0][1], 'r+', markersize=15)
         plt.plot(pair[1][0],pair[1][1], 'b+', markersize=15)
         plt.plot([pair[0][0],pair[1][0]], [pair[0][1], pair[1][1]])
-    plt.show()
+    plt.savefig(save_name)
     
     return pair_array
 

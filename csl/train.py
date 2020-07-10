@@ -72,7 +72,7 @@ def call_model(workspace, dataset, normalize_heatmap=False, batch_size=2, sigma=
         del checkpoint
         torch.cuda.empty_cache()
     model.visualize(dataset, device, batch_size=batch_size)
-
+    #model.show_loc_result(dataset, device, batch_size=batch_size)
 
 if __name__ == '__main__':
     arg_parser = ArgumentParser()
