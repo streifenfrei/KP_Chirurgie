@@ -13,10 +13,10 @@ from PIL import Image
 # Detectron 2 requires an integer instead of a class label as a string
 # This is a dict for mapping the class labels to integers
 mapping = {
-    'scissors': 1000,
-    'needle_holder': 1001,
-    'needleholder': 1001,
-    'grasper': 1002
+    'scissors': 0,
+    'needle_holder': 1,
+    'needleholder': 1,
+    'grasper': 2
 }
 
 

@@ -176,8 +176,8 @@ def load_config(config_path: str = None):
     assert config_path
     cfg = get_cfg()
     cfg.merge_from_file(config_path)
-    cfg.MODEL.WEIGHTS = model_zoo.get_checkpoint_url(
-        "COCO-InstanceSegmentation/mask_rcnn_R_50_FPN_3x.yaml")
+    #cfg.MODEL.WEIGHTS = model_zoo.get_checkpoint_url(
+     #   "COCO-InstanceSegmentation/mask_rcnn_R_50_FPN_3x.yaml")
     os.makedirs(cfg.OUTPUT_DIR, exist_ok=True)
     return cfg
 
