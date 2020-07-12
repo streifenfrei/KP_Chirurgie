@@ -175,8 +175,11 @@ def test_registration(instruments_metadata: detectron2.data.catalog.Metadata,
 def load_config(config_path: str = None):
     assert config_path
     cfg = get_cfg()
+    # cfg.merge_from_file(model_zoo.get_config_file("COCO-InstanceSegmentation/mask_rcnn_R_50_FPN_3x.yaml"))
     cfg.merge_from_file(config_path)
-    os.makedirs(cfg.OUTPUT_DIR, exist_ok=True)
+    # cfg.MODEL.WEIGHTS = model_zoo.get_checkpoint_url("COCO-InstanceSegmentation/mask_rcnn_R_50_FPN_3x.yaml")
+    cfg.MODEL.WEIGHTS = os.path.join(cfg.OUTPUT_DIR, "model_final.pth")
+    cfg.MODEL.DEVICE = 'cuda' if torch.cuda.is_available() else 'cpu'
     return cfg
 
 
