@@ -3,7 +3,7 @@ import scipy
 import scipy.ndimage as ndimage
 import scipy.ndimage.filters as filters
 import matplotlib.pyplot as plt
-
+import cv2
 from dataLoader import image_transform, OurDataLoader, train_val_dataset
 
 #明天搞
@@ -51,8 +51,10 @@ def findNN(image_label, image_predicted, save_name):
     for i in xy_label:
         nn_id = nearest_neighbors(i, xy_predict)
         pair_list.append([i, xy_predict[nn_id]])
+        np.delete(xy_predict, nn_id)
     pair_array = np.array(pair_list)
     print(pair_array)
+
     
     fig=plt.figure(figsize=(12, 6))
     fig.add_subplot(1,3,1)    
@@ -68,8 +70,37 @@ def findNN(image_label, image_predicted, save_name):
     plt.savefig(save_name)
     
     return pair_array
+    
+    
+# TODO: test    
+# https://note.nkmk.me/en/python-opencv-numpy-alpha-blend-mask/   
 
-
+ 
+def plotOverlayImages(ori_image, seg_image, loc_images)
+    seg_image_3_channel = cv2.cvtColor(seg_image, cv2.COLOR_GRAY2BGR)
+    seg_overlap = cv2.addWeighted(ori_image, 0.5, seg_image_3_channel, 0.5, 0)
+    cv2.imwrite('segmented_weighted.jpg', seg_overlap) # for seg
+    
+    print(loc_images.shape)
+    loc_classes, width, height = list(loc_images.shape)
+    
+    for loc_class_ in range(loc_classes):
+        xy_predict = non_max_suppression(loc_images[loc_class_])
+        
+        img = plt.imread("segmented_weighted.jpg")
+        fig, ax = plt.subplots()
+        ax.imshow(img)
+        
+        for xy in xy_predict:
+            ax.plot(xy[0],xy[1], 'ro', markersize=15)
+    plt.savefig('segmented_weighted_all.jpg')
+        
+    
+    
+def applyThreshold(image_predicted, thres_value):
+    image_predicted_thresholded = (image_predicted_thresholded > 0.5) * image_predicted_thresholded
+    return image_predicted_thresholded
+    
     
 def plot_threshold_score(all_image_pairs,threshold_list = [10, 20, 30, 40, 50]):
     threshold_count_dict = {}
