@@ -124,17 +124,17 @@ def register_dataset_and_metadata(path_to_data: str,
                                   classes_list: List[str]) -> detectron2.data.catalog.Metadata:
     """
     Registrs the dataset according to the https://detectron2.readthedocs.io/tutorials/datasets.html
-    
+
     Args:
         path_to_data: path to the folder, where the train and validation forlder is located
                       folder train has images for training and a json that describes the
                       data (bounding boxes, labels etc)
         classes_list: is a list of all possible labels that might occur
-    
+
     Returns:
         a registration Metadata object that can be further used for training/testing/validation
         it is similar to a Dataloader
-    
+
     """
 
     # classes_list = ['scissors', 'needle_holder', 'grasper']
@@ -176,6 +176,8 @@ def load_config(config_path: str = None):
     assert config_path
     cfg = get_cfg()
     cfg.merge_from_file(config_path)
+    cfg.MODEL.WEIGHTS = model_zoo.get_checkpoint_url(
+        "COCO-InstanceSegmentation/mask_rcnn_R_50_FPN_3x.yaml")
     os.makedirs(cfg.OUTPUT_DIR, exist_ok=True)
     return cfg
 
@@ -228,7 +230,7 @@ def main():
 
     # inference_old_model()
     start_training(cfg)
-    inference_on_trained_mode(instruments_metadata, args.dataset, cfg=cfg)
+    #inference_on_trained_mode(instruments_metadata, args.dataset, cfg=cfg)
 
 
 if __name__ == "__main__":

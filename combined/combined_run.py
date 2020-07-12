@@ -1,6 +1,6 @@
 from argparse import ArgumentParser
 
-import combined.modules.roi_heads, combined.modules.csl_head
+import combined.heads.roi_heads, combined.heads.csl_head, combined.meta_arch.combined_arch
 import torch
 import detectron2
 from detectron2.utils.logger import setup_logger
@@ -99,13 +99,10 @@ def register_dataset_and_metadata(path_to_data: str,
 
     """
 
-    # classes_list = ['scissors', 'needle_holder', 'grasper']
-    # path_to_data = "/Users/chernykh_alexander/Yandex.Disk.localized/CloudTUD/Komp_CHRIRURGIE/instruments/"
     for d in ["train", "val"]:
         DatasetCatalog.register("instruments_" + d, lambda d=d: get_balloon_dicts(path_to_data + d))
         MetadataCatalog.get("instruments_" + d).set(thing_classes=classes_list)
     instruments_metadata = MetadataCatalog.get("instruments_train")
-    # instruments_metadata_val = MetadataCatalog.get("instruments_val")
     return instruments_metadata
 
 
@@ -140,8 +137,9 @@ def inference_on_trained_mode(instruments_metadata,
                        instance_mode=ColorMode.IMAGE_BW  # remove the colors of unsegmented pixels
                        )
         out = v.draw_instance_predictions(outputs["instances"].to("cpu"))
-        #cv2.imshow('image', out.get_image()[:, :, ::-1])
-        #cv2.waitKey(0)
+
+        cv2.imshow('image', out.get_image()[:, :, ::-1])
+        cv2.waitKey(0)
 
 
 def main():
@@ -155,8 +153,8 @@ def main():
     classes_list = ['scissors', 'needle_holder', 'grasper']
     instruments_metadata = register_dataset_and_metadata(args.dataset, classes_list)
     # inference_old_model()
-    #start_training(cfg)
-    inference_on_trained_mode(instruments_metadata, args.dataset, cfg=cfg)
+    start_training(cfg)
+    #inference_on_trained_mode(instruments_metadata, args.dataset, cfg=cfg)
 
 
 if __name__ == "__main__":

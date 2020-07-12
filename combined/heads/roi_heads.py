@@ -9,7 +9,7 @@ from detectron2.config import configurable
 from detectron2.layers import ShapeSpec
 from detectron2.structures import Boxes, ImageList, Instances
 
-from combined.modules.csl_head import build_csl_head
+from combined.heads.csl_head import build_csl_head
 
 
 @ROI_HEADS_REGISTRY.register()
@@ -23,6 +23,7 @@ class CSLROIHeads(ROIHeads):
             box_pooler: ROIPooler,
             box_head: nn.Module,
             box_predictor: nn.Module,
+            csl_in_features: List[str],
             csl_head: nn.Module,
             mask_in_features: Optional[List[str]] = None,
             mask_pooler: Optional[ROIPooler] = None,
@@ -31,11 +32,11 @@ class CSLROIHeads(ROIHeads):
             **kwargs
     ):
         super().__init__(**kwargs)
-        # keep self.in_features for backward compatibility
-        self.in_features = self.box_in_features = box_in_features
+        self.box_in_features = box_in_features
         self.box_pooler = box_pooler
         self.box_head = box_head
         self.box_predictor = box_predictor
+        self.csl_in_features = csl_in_features
         self.csl_head = csl_head
 
         self.mask_on = mask_in_features is not None
@@ -94,7 +95,10 @@ class CSLROIHeads(ROIHeads):
 
     @classmethod
     def _init_csl_head(cls, cfg, input_shape):
-        return{"csl_head": build_csl_head(cfg, input_shape)}
+        return {
+            "csl_head": build_csl_head(cfg, input_shape),
+            "csl_in_features": cfg.MODEL.CSL_HEAD.IN_FEATURES
+        }
 
     @classmethod
     def _init_mask_head(cls, cfg, input_shape):
@@ -129,9 +133,6 @@ class CSLROIHeads(ROIHeads):
             proposals: List[Instances],
             targets: Optional[List[Instances]] = None,
     ) -> Tuple[List[Instances], Dict[str, torch.Tensor]]:
-        """
-        See :class:`ROIHeads.forward`.
-        """
 
         del images
         if self.training:
@@ -145,31 +146,19 @@ class CSLROIHeads(ROIHeads):
             # heads. But when `self.train_on_pred_boxes is True`, proposals will contain boxes
             # predicted by the box head.
             losses.update(self._forward_mask(features, proposals))
+            #losses.update(self._forward_csl(features, proposals))
             return proposals, losses
         else:
             pred_instances = self._forward_box(features, proposals)
             # During inference cascaded prediction is used: the mask and keypoints heads are only
             # applied to the top scoring box detections.
             pred_instances = self.forward_with_given_boxes(features, pred_instances)
+            pred_instances = self._forward_csl(features, pred_instances)
             return pred_instances, {}
 
     def forward_with_given_boxes(
             self, features: Dict[str, torch.Tensor], instances: List[Instances]
     ) -> List[Instances]:
-        """
-        Use the given boxes in `instances` to produce other (non-box) per-ROI outputs.
-        This is useful for downstream tasks where a box is known, but need to obtain
-        other attributes (outputs of other heads).
-        Test-time augmentation also uses this.
-        Args:
-            features: same as in `forward()`
-            instances (list[Instances]): instances to predict other outputs. Expect the keys
-                "pred_boxes" and "pred_classes" to exist.
-        Returns:
-            instances (list[Instances]):
-                the same `Instances` objects, with extra
-                fields such as `pred_masks` or `pred_keypoints`.
-        """
         assert not self.training
         assert instances[0].has("pred_boxes") and instances[0].has("pred_classes")
 
@@ -179,20 +168,6 @@ class CSLROIHeads(ROIHeads):
     def _forward_box(
             self, features: Dict[str, torch.Tensor], proposals: List[Instances]
     ) -> Union[Dict[str, torch.Tensor], List[Instances]]:
-        """
-        Forward logic of the box prediction branch. If `self.train_on_pred_boxes is True`,
-            the function puts predicted boxes in the `proposal_boxes` field of `proposals` argument.
-        Args:
-            features (dict[str, Tensor]): mapping from feature map names to tensor.
-                Same as in :meth:`ROIHeads.forward`.
-            proposals (list[Instances]): the per-image object proposals with
-                their matching ground truth.
-                Each has fields "proposal_boxes", and "objectness_logits",
-                "gt_classes", "gt_boxes".
-        Returns:
-            In training, a dict of losses.
-            In inference, a list of `Instances`, the predicted instances.
-        """
         features = [features[f] for f in self.box_in_features]
         box_features = self.box_pooler(features, [x.proposal_boxes for x in proposals])
         box_features = self.box_head(box_features)
@@ -214,21 +189,15 @@ class CSLROIHeads(ROIHeads):
             pred_instances, _ = self.box_predictor.inference(predictions, proposals)
             return pred_instances
 
+    def _forward_csl(
+            self, features: Dict[str, torch.Tensor], instances: List[Instances]
+    ) -> Union[Dict[str, torch.Tensor], List[Instances]]:
+        features = [features[f] for f in self.csl_in_features]
+        return self.csl_head(features, instances)
+
     def _forward_mask(
             self, features: Dict[str, torch.Tensor], instances: List[Instances]
     ) -> Union[Dict[str, torch.Tensor], List[Instances]]:
-        """
-        Forward logic of the mask prediction branch.
-        Args:
-            features (dict[str, Tensor]): mapping from feature map names to tensor.
-                Same as in :meth:`ROIHeads.forward`.
-            instances (list[Instances]): the per-image instances to train/predict masks.
-                In training, they can be the proposals.
-                In inference, they can be the predicted boxes.
-        Returns:
-            In training, a dict of losses.
-            In inference, update `instances` with new fields "pred_masks" and return it.
-        """
         if not self.mask_on:
             return {} if self.training else instances
 

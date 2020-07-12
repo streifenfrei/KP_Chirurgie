@@ -109,7 +109,7 @@ def create_desription_single_file(json_file: str, for_json: dict, path_to_save: 
                     shape_attribute["region_attributes"] = {}
                     regions[str(index)] = shape_attribute
     except ValueError:
-        print(f'Failed to process {json_file =}')
+        print(f'Failed to process {json_file}')
     return for_json
 
 
