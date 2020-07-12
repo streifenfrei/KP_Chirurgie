@@ -221,13 +221,9 @@ def main():
     setup_logger(os.path.join(cfg.OUTPUT_DIR, 'saved_logs.log'))
 
     classes_list = ['scissors', 'needle_holder', 'grasper']
-    # path_to_data = "../dataset/instruments/"
     instruments_metadata = register_dataset_and_metadata(args.dataset, classes_list)
-    # path_to_training_data = "../dataset/instruments/train"
-    path_to_training_data = "/Users/chernykh_alexander/Yandex.Disk.localized/CloudTUD/Komp_CHRIRURGIE/instruments/train"
-    path_to_val_data = "/Users/chernykh_alexander/Yandex.Disk.localized/CloudTUD/Komp_CHRIRURGIE/instruments/val"
-    # test_registration(instruments_metadata, path_to_val_data,
-    #                   json_with_desription_name="dataset_registration_detectron2.json")
+    # path_to_val_data = "/Users/chernykh_alexander/Yandex.Disk.localized/CloudTUD/Komp_CHRIRURGIE/instruments/val"
+    # test_registration(instruments_metadata, path_to_val_data, json_with_desription_name="dataset_registration_detectron2.json")
 
     # inference_old_model()
     start_training(cfg)
