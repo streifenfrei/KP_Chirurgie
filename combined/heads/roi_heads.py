@@ -10,6 +10,7 @@ from detectron2.layers import ShapeSpec
 from detectron2.structures import Boxes, ImageList, Instances
 
 from combined.heads.csl_head import build_csl_head
+from combined.heads.csl_pooler import CSLPooler
 
 
 @ROI_HEADS_REGISTRY.register()
@@ -24,6 +25,7 @@ class CSLROIHeads(ROIHeads):
             box_head: nn.Module,
             box_predictor: nn.Module,
             csl_in_features: List[str],
+            csl_pooler: CSLPooler,
             csl_head: nn.Module,
             mask_in_features: Optional[List[str]] = None,
             mask_pooler: Optional[ROIPooler] = None,
@@ -37,6 +39,7 @@ class CSLROIHeads(ROIHeads):
         self.box_head = box_head
         self.box_predictor = box_predictor
         self.csl_in_features = csl_in_features
+        self.csl_pooler = csl_pooler
         self.csl_head = csl_head
 
         self.mask_on = mask_in_features is not None
@@ -95,9 +98,14 @@ class CSLROIHeads(ROIHeads):
 
     @classmethod
     def _init_csl_head(cls, cfg, input_shape):
+        in_features = cfg.MODEL.CSL_HEAD.IN_FEATURES
+        scales = list(1.0 / input_shape[k].stride for k in in_features)
+        scales.reverse()
+        csl_pooler = CSLPooler(7, scales, 0)
         return {
-            "csl_head": build_csl_head(cfg, input_shape),
-            "csl_in_features": cfg.MODEL.CSL_HEAD.IN_FEATURES
+            "csl_in_features": in_features,
+            "csl_pooler": csl_pooler,
+            "csl_head": build_csl_head(cfg)
         }
 
     @classmethod
@@ -146,14 +154,13 @@ class CSLROIHeads(ROIHeads):
             # heads. But when `self.train_on_pred_boxes is True`, proposals will contain boxes
             # predicted by the box head.
             losses.update(self._forward_mask(features, proposals))
-            #losses.update(self._forward_csl(features, proposals))
+            losses.update(self._forward_csl(features, proposals))
             return proposals, losses
         else:
             pred_instances = self._forward_box(features, proposals)
             # During inference cascaded prediction is used: the mask and keypoints heads are only
             # applied to the top scoring box detections.
             pred_instances = self.forward_with_given_boxes(features, pred_instances)
-            pred_instances = self._forward_csl(features, pred_instances)
             return pred_instances, {}
 
     def forward_with_given_boxes(
@@ -163,6 +170,7 @@ class CSLROIHeads(ROIHeads):
         assert instances[0].has("pred_boxes") and instances[0].has("pred_classes")
 
         instances = self._forward_mask(features, instances)
+        instances = self._forward_csl(features, instances)
         return instances
 
     def _forward_box(
@@ -193,7 +201,9 @@ class CSLROIHeads(ROIHeads):
             self, features: Dict[str, torch.Tensor], instances: List[Instances]
     ) -> Union[Dict[str, torch.Tensor], List[Instances]]:
         features = [features[f] for f in self.csl_in_features]
-        return self.csl_head(features, instances)
+        pred_boxes = [x.pred_boxes for x in instances]
+        mask_features = self.csl_pooler(features, pred_boxes)
+        return self.csl_head(mask_features, instances)
 
     def _forward_mask(
             self, features: Dict[str, torch.Tensor], instances: List[Instances]

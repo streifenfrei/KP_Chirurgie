@@ -47,14 +47,6 @@ def detector_postprocess(results, output_height, output_width, mask_threshold=0.
     )
     resize = Resize((output_height_tmp, output_width_tmp))
 
-    segmentation = results._segmentation.reshape((1, input_height, input_width))
-    segmentation = ToTensor()(resize(ToPILImage()(segmentation)))
-    localisation = []
-    for localisation_class in results._localisation.split(dim=1, split_size=1):
-        localisation_class = localisation_class.reshape((1, input_height, input_width))
-        localisation_class = resize(ToPILImage()(localisation_class))
-        localisation.append(ToTensor()(localisation_class))
-    localisation = torch.cat(localisation)
 
     results = Instances((output_height, output_width), **results.get_fields())
 
@@ -66,9 +58,6 @@ def detector_postprocess(results, output_height, output_width, mask_threshold=0.
     output_boxes.scale(scale_x, scale_y)
     output_boxes.clip(results.image_size)
 
-    results = results[output_boxes.nonempty()]
-    results._segmentation = segmentation
-    results._localisation = localisation
 
     if results.has("pred_masks"):
         results.pred_masks = retry_if_cuda_oom(paste_masks_in_image)(

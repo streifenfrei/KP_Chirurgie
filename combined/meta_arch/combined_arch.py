@@ -90,18 +90,6 @@ class RCNNAndCSL(GeneralizedRCNN):
             results = self.roi_heads.forward_with_given_boxes(features, detected_instances)
 
         if do_postprocess:
-            return RCNNAndCSL._postprocess(results, batched_inputs, images.image_sizes)
+            return GeneralizedRCNN._postprocess(results, batched_inputs, images.image_sizes)
         else:
             return results
-
-    @staticmethod
-    def _postprocess(instances, batched_inputs, image_sizes):
-        processed_results = []
-        for results_per_image, input_per_image, image_size in zip(
-                instances, batched_inputs, image_sizes
-        ):
-            height = input_per_image.get("height", image_size[0])
-            width = input_per_image.get("width", image_size[1])
-            r = detector_postprocess(results_per_image, height, width)
-            processed_results.append({"instances": r})
-        return processed_results

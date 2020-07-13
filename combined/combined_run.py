@@ -153,8 +153,8 @@ def main():
     classes_list = ['scissors', 'needle_holder', 'grasper']
     instruments_metadata = register_dataset_and_metadata(args.dataset, classes_list)
     # inference_old_model()
-    start_training(cfg)
-    #inference_on_trained_mode(instruments_metadata, args.dataset, cfg=cfg)
+    #start_training(cfg)
+    inference_on_trained_mode(instruments_metadata, args.dataset, cfg=cfg)
 
 
 if __name__ == "__main__":

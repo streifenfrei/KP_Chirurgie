@@ -3,7 +3,7 @@ OUTPUT_DIR: "../out/combined"
 MODEL:
   DEVICE: "cpu"
   #   WEIGHTS: model_zoo.get_checkpoint_url("COCO-InstanceSegmentation/mask_rcnn_R_50_FPN_3x.yaml")
-  #  WEIGHTS: "../out/detectron/model_final_old.pth"
+  WEIGHTS: "../out/combined/model_final.pth"
   #  WEIGHTS: "COCO-InstanceSegmentation/mask_rcnn_R_50_FPN_3x.yaml"
   ROI_HEADS:
     BATCH_SIZE_PER_IMAGE: 128  # faster, and good enough for this toy dataset (default: 512)
