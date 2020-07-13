@@ -162,7 +162,7 @@ class CSLNet(nn.Module):
             segmentation = segmentation.cpu().detach()
             localisation = localisation.cpu().detach()
             localisation = localisation.numpy()
-            target = target.cpu().detach()
+            target = target.cpu().detach().numpy()
 
             batch_size, seg_classes, width, height = list(segmentation.shape)
             
@@ -179,13 +179,12 @@ class CSLNet(nn.Module):
             label_loc_images = []
             for loc_class_ in range(loc_classes):
                 loc_image = localisation[0, loc_class_, :, :]
-                label_loc_image = target[0, 1 + loc_class_, :, :]
-                
+                label_loc_image = target[0, :, :, 1 + loc_class_]
                 loc_image = resize(loc_image, (ori_img.shape[0], ori_img.shape[1]))
                 loc_images.append(loc_image)
                 label_loc_images.append(label_loc_image)
       
-            plotOverlayImages(ori_img, seg_image, loc_images, label_loc_images, '..\out\result' + str(i) + '.png')        
+            plotOverlayImages(ori_img, seg_image, loc_images, label_loc_images, r'../out/' + str(i) + '.png')        
 
     def visualize(self, dataset, device='cpu', batch_size=2):
         loader = train_val_dataset(dataset, validation_split=0, train_batch_size=batch_size,
