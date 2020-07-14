@@ -101,7 +101,8 @@ class CSLROIHeads(ROIHeads):
         in_features = cfg.MODEL.CSL_HEAD.IN_FEATURES
         scales = list(1.0 / input_shape[k].stride for k in in_features)
         scales.reverse()
-        csl_pooler = CSLPooler(7, scales, 0)
+        pooler_resolution = cfg.MODEL.CSL_HEAD.POOLER_RESOLUTION
+        csl_pooler = CSLPooler(pooler_resolution, scales, 0)
         return {
             "csl_in_features": in_features,
             "csl_pooler": csl_pooler,

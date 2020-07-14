@@ -75,7 +75,7 @@ class CSLHead(nn.Module):
                     "loc_loss": CSLHead._localisation_loss(seg, gt_locs)}
         else:
             for instances_per_image, (seg, loc) in zip(instances, x):
-                instances_per_image.pred_seg = seg
+                instances_per_image.pred_seg = torch.nn.functional.sigmoid(seg)
                 instances_per_image.pred_loc = loc
             return instances
 
@@ -88,7 +88,7 @@ class CSLHead(nn.Module):
         weights = torch.where(target > 0.0001, torch.full_like(target, 5), torch.full_like(target, 1))
         all_mse = (pred - target)**2
         weighted_mse = all_mse * weights
-        return weighted_mse.sum()/ (target.size(0) * target.size(1))
+        return weighted_mse.sum() / (target.size(0) * target.size(1))
 
     def _forward_per_instance(self, x, instances):
         output = []
