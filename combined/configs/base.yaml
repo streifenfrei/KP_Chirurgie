@@ -19,6 +19,8 @@ MODEL:
   ROI_HEADS:
     NAME: "CSLROIHeads"
     IN_FEATURES: ["p2", "p3", "p4", "p5"]
+    BATCH_SIZE_PER_IMAGE: 512
+    SCORE_THRESH_TEST: 0.5
   ROI_BOX_HEAD:
     NAME: "FastRCNNConvFCHead"
     NUM_FC: 2
