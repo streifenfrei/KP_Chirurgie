@@ -1,13 +1,11 @@
 from typing import Dict, List, Optional, Tuple, Union
-import torch
-from detectron2.modeling import ROI_HEADS_REGISTRY, ROIHeads, build_box_head, build_mask_head, StandardROIHeads
-from detectron2.modeling.poolers import ROIPooler
-from detectron2.modeling.roi_heads import FastRCNNOutputLayers, select_foreground_proposals
-from torch import nn
 
+import torch
 from detectron2.config import configurable
-from detectron2.layers import ShapeSpec
-from detectron2.structures import Boxes, ImageList, Instances
+from detectron2.modeling import ROI_HEADS_REGISTRY, StandardROIHeads
+from detectron2.modeling.roi_heads import select_foreground_proposals
+from detectron2.structures import ImageList, Instances
+from torch import nn
 
 from combined.heads.csl_head import build_csl_head
 from combined.heads.csl_pooler import CSLPooler

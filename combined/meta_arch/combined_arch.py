@@ -17,13 +17,7 @@ class RCNNAndCSL(GeneralizedRCNN):
         return results
 
     @staticmethod
-    def _postprocess_csl(instances, mask_threshold=0.5):
-        instances.pred_seg = retry_if_cuda_oom(paste_masks_in_image)(
-            instances.pred_seg[:, 0, :, :],
-            instances.pred_boxes,
-            instances.image_size,
-            threshold=mask_threshold,
-        )
+    def _postprocess_csl(instances):
         loc = instances.pred_loc
         locs = []
         for loc_per_class in loc.split(1, 1):

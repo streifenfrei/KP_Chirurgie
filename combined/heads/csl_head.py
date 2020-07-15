@@ -18,6 +18,7 @@ class CSLHead(nn.Module):
 
     def __init__(self, cfg, dropout=0.5):
         super().__init__()
+        self.lambdaa = cfg.MODEL.CSL_HEAD.LAMBDA
         localisation_classes = cfg.MODEL.CSL_HEAD.LOCALISATION_CLASSES
 
         self.bottleneck_layer = self._make_layer(256, 256, sampling=self._Sampling.none_norm)
@@ -71,8 +72,8 @@ class CSLHead(nn.Module):
                 #gt_locs.append(gt_locs_per_image)
             gt_masks = torch.cat(gt_masks, dim=0)
             #gt_locs = torch.cat(gt_locs, dim=0)
-            return {"seg_loss": CSLHead._segmentation_loss(seg, gt_masks)}
-                    #"loc_loss": CSLHead._localisation_loss(seg, gt_locs)}
+            return {"loss_seg": CSLHead._segmentation_loss(seg, gt_masks)}
+                    #"loss_loc": self.lambdaa * CSLHead._localisation_loss(seg, gt_locs)}
         else:
             for instances_per_image, (seg, loc) in zip(instances, x):
                 instances_per_image.pred_masks = torch.sigmoid(seg)
