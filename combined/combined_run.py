@@ -6,7 +6,7 @@ from detectron2.config import get_cfg
 from detectron2.engine import DefaultTrainer
 from detectron2.utils.logger import setup_logger
 
-from combined.configs.config import add_csl_config
+from combined.configs.config import *
 from maskrcnn.detectron_run import register_dataset_and_metadata, inference_on_trained_mode
 
 

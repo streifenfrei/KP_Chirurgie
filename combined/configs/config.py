@@ -1,5 +1,8 @@
 from detectron2.config import CfgNode as CN
-
+from combined.heads.roi_heads import *
+from combined.heads.csl_head import *
+from combined.heads.csl_pooler import *
+from combined.meta_arch.combined_arch import *
 
 def add_csl_config(cfg):
     cfg.MODEL.CSL_HEAD = CN()

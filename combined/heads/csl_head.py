@@ -65,22 +65,24 @@ class CSLHead(nn.Module):
                     instances_per_image.proposal_boxes.tensor, seg.size(2)
                 ).to(device=seg.device)
                 gt_masks.append(gt_masks_per_image)
-                gt_locs_per_image = instances_per_image.gt_locs.crop_and_resize(
-                    instances_per_image.proposal_boxes.tensor, loc.size(2)
-                ).to(device=loc.device)
-                gt_locs.append(gt_locs_per_image)
+                #gt_locs_per_image = instances_per_image.gt_locs.crop_and_resize(
+                #    instances_per_image.proposal_boxes.tensor, loc.size(2)
+                #).to(device=loc.device)
+                #gt_locs.append(gt_locs_per_image)
             gt_masks = torch.cat(gt_masks, dim=0)
-            gt_locs = torch.cat(gt_locs, dim=0)
-            return {"seg_loss": CSLHead._segmentation_loss(seg, gt_masks),
-                    "loc_loss": CSLHead._localisation_loss(seg, gt_locs)}
+            #gt_locs = torch.cat(gt_locs, dim=0)
+            return {"seg_loss": CSLHead._segmentation_loss(seg, gt_masks)}
+                    #"loc_loss": CSLHead._localisation_loss(seg, gt_locs)}
         else:
             for instances_per_image, (seg, loc) in zip(instances, x):
-                instances_per_image.pred_seg = torch.nn.functional.sigmoid(seg)
+                instances_per_image.pred_masks = torch.sigmoid(seg)
                 instances_per_image.pred_loc = loc
             return instances
 
     @staticmethod
     def _segmentation_loss(pred, target):
+        pred = pred.squeeze()
+        target = target.type(torch.DoubleTensor)
         return torch.nn.functional.binary_cross_entropy_with_logits(pred, target)
 
     @staticmethod
