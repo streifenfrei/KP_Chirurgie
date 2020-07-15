@@ -4,6 +4,8 @@ from detectron2.modeling import GeneralizedRCNN, META_ARCH_REGISTRY
 
 from detectron2.utils.memory import retry_if_cuda_oom
 
+from evaluate import non_max_suppression
+
 
 @META_ARCH_REGISTRY.register()
 class RCNNAndCSL(GeneralizedRCNN):
@@ -19,15 +21,16 @@ class RCNNAndCSL(GeneralizedRCNN):
     @staticmethod
     def _postprocess_csl(instances):
         loc = instances.pred_loc
-        locs = []
-        for loc_per_class in loc.split(1, 1):
-            locs.append(
-                retry_if_cuda_oom(paste_masks_in_image)(
-                    loc_per_class[:, 0, :, :],  # N, 1, M, M
-                    instances.pred_boxes,
-                    instances.image_size,
-                    threshold=0, ).unsqueeze(1)
-            )
-
-        instances.pred_loc = torch.cat(locs, dim=1)
+        instances.pred_loc = RCNNAndCSL.heatmaps_to_keypoints(loc)
         return instances
+
+    @staticmethod
+    def heatmaps_to_keypoints(heatmaps):
+        keypoints = []
+        for heatmaps_per_image in heatmaps.split(1, 0):
+            keypoints_per_image = []
+            for heatmap_per_class in heatmaps_per_image.split(1, 1):
+                heatmap_np = heatmap_per_class.squeeze().detach().cpu().numpy()
+                keypoints_per_image.append(non_max_suppression(heatmap_np))
+            keypoints.append(keypoints_per_image)
+        return keypoints

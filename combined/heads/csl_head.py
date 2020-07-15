@@ -1,6 +1,7 @@
 from enum import IntEnum
 
 from detectron2.utils.registry import Registry
+import matplotlib.pyplot as plt
 from torch import nn
 import torch
 
@@ -10,6 +11,19 @@ CSL_HEAD_REGISTRY = Registry("CSL_HEAD")
 
 @CSL_HEAD_REGISTRY.register()
 class CSLHead(nn.Module):
+
+    @staticmethod
+    def _segmentation_loss(pred, target):
+        pred = pred.squeeze()
+        target = target.type(torch.DoubleTensor)
+        return torch.nn.functional.binary_cross_entropy_with_logits(pred, target)
+
+    @staticmethod
+    def _localisation_loss(pred, target):
+        weights = torch.where(target > 0.0001, torch.full_like(target, 5), torch.full_like(target, 1))
+        all_mse = (pred - target)**2
+        weighted_mse = all_mse * weights
+        return weighted_mse.sum() / (target.size(0) * target.size(1))
 
     class _Sampling(IntEnum):
         none_relu = 0
@@ -80,18 +94,6 @@ class CSLHead(nn.Module):
                 instances_per_image.pred_loc = loc
             return instances
 
-    @staticmethod
-    def _segmentation_loss(pred, target):
-        pred = pred.squeeze()
-        target = target.type(torch.DoubleTensor)
-        return torch.nn.functional.binary_cross_entropy_with_logits(pred, target)
-
-    @staticmethod
-    def _localisation_loss(pred, target):
-        weights = torch.where(target > 0.0001, torch.full_like(target, 5), torch.full_like(target, 1))
-        all_mse = (pred - target)**2
-        weighted_mse = all_mse * weights
-        return weighted_mse.sum() / (target.size(0) * target.size(1))
 
     def _forward_per_instance(self, x, instances):
         output = []
