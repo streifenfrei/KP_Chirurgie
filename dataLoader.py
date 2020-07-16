@@ -158,6 +158,11 @@ def image_transform(p=1):
         ShiftScaleRotate(scale_limit=0.1,rotate_limit=30, border_mode=0)
     ], p=p)
 
+def image_transform_valid(p=1):
+    return Compose([
+        CenterCrop(height=512, width=960, p=1),
+    ], p=p)    
+    
 def image_norm():
     return transforms_T.Compose([
         transforms_T.ToTensor(),

@@ -6,7 +6,7 @@ import matplotlib.pyplot as plt
 import cv2
 from dataLoader import image_transform, OurDataLoader, train_val_dataset
 
-#明天搞
+
 #https://stackoverflow.com/questions/9111711/get-coordinates-of-local-maxima-in-2d-array-above-certain-value
 def non_max_suppression(img_landmark):
     neighborhood_size = 10
@@ -32,12 +32,7 @@ def non_max_suppression(img_landmark):
         xy.append([x_center, y_center])
     #print(x,y)
     return np.array(xy)
-    #plt.imshow(data)
-    #plt.savefig('data.png', bbox_inches = 'tight')
 
-    #plt.autoscale(False)
-    #plt.plot(x,y, 'r+', markersize=15)
-    #plt.savefig('result.png', bbox_inches = 'tight')
     
 # https://stackoverflow.com/questions/45742199/find-nearest-neighbors-of-a-numpy-array-in-list-of-numpy-arrays-using-euclidian    
 def nearest_neighbors(target_xy, array):
@@ -83,25 +78,26 @@ def findNN(image_label, image_predicted, save_name):
 # https://note.nkmk.me/en/python-opencv-numpy-alpha-blend-mask/   
 
  
-def plotOverlayImages(ori_image, seg_image, loc_images, label_loc_image, save_name):
+def plotOverlayImages(ori_image, seg_image, loc_images, label_loc_images, save_name):
     ori_image = np.float32(ori_image) * 255
     seg_image = np.float32(seg_image) * 255
     seg_image_3_channel = cv2.cvtColor(seg_image, cv2.COLOR_GRAY2BGR)
-    lower =(255, 255, 255) # lower bound for each channel
+    lower =(80, 80, 80) # lower bound for each channel
     upper = (255, 255, 255) # upper bound for each channel
 
     # create the mask and use it to change the colors
-    mask = cv2.inRange(img, lower, upper)
-    seg_image_3_channel[mask != 0] = [0, 200, 200]
+    mask = cv2.inRange(seg_image_3_channel, lower, upper)
+    seg_image_3_channel[mask != 0] = [50, 50, 0]
     #print('seg_image_3_channel: ',seg_image_3_channel.shape)
-    seg_overlap = cv2.addWeighted(ori_image, 0.7, seg_image_3_channel, 0.3, 0)
+    seg_overlap = cv2.addWeighted(ori_image, 0.6, seg_image_3_channel, 0.4, 30)
     
-    #cv2.imwrite('..\out\segmented_weighted.jpg', seg_overlap) # for seg
-    loc_class_list = ['ivory', 'antiquewhite', 'darkorange', 'burlywood']
-    label_class_list = ['azure', 'aquamarine', 'teal', 'darkslategray']
+    cv2.imwrite(r"../out/segmented_weighted.jpg", seg_overlap) # for seg
+    # https://www.cnblogs.com/darkknightzh/p/6117528.html color reference
+    loc_class_list = ['firebrick', 'salmon', 'sandybrown', 'linen']
+    label_class_list = ['lightsteelblue', 'royalblue', 'blue', 'midnightblue']
     loc_classes = len(loc_images)
-    #img = plt.imread("..\out\segmented_weighted.jpg")
-    img = cv2.cvtColor(seg_overlap, cv2.COLOR_BGR2RGB)
+    img = plt.imread(r"../out/segmented_weighted.jpg")
+    #img = cv2.cvtColor(seg_overlap, cv2.COLOR_BGR2RGB)
     fig, ax = plt.subplots()
     ax.imshow(img)
     for loc_class_ in range(loc_classes):
@@ -109,14 +105,14 @@ def plotOverlayImages(ori_image, seg_image, loc_images, label_loc_image, save_na
         image_predicted = applyThreshold(image_predicted, 0.4)
         xy_predict = non_max_suppression(np.float32(image_predicted))  
         for xy in xy_predict:
-            ax.plot(xy[0],xy[1], color = loc_class_list[loc_class_], linestyle = 'o', markersize=3)
-    
+            ax.plot(xy[0],xy[1], color = loc_class_list[loc_class_], marker = '.', markersize=3)
+    '''
     for loc_class_ in range(loc_classes):
         label_loc_image = label_loc_images[loc_class_]
         label_loc_image = non_max_suppression(np.float32(label_loc_image))
         for xy in label_loc_image:
-            ax.plot(xy[0],xy[1], color = label_class_list[loc_class_], linestyle = 'o', markersize=3)
-
+            ax.plot(xy[0],xy[1], color = label_class_list[loc_class_], marker = '*', markersize=3)
+    '''
     plt.savefig(save_name)
         
     
