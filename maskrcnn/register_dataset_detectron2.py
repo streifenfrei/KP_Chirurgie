@@ -34,7 +34,15 @@ def save_img_from_base(filename: str, img_data: np.ndarray, path_to_save: str) -
     image = Image.fromarray(img_data)
     image.save(f"{path_to_save}" + filename)
 
-def flatten_list(list_of_lists):
+def flatten_list(list_of_lists:list)->List[float]:
+    """
+    Flatten a list :[[]] -> []
+    Args:
+        list_of_lists:
+
+    Returns:
+
+    """
     return [val for sublist in list_of_lists for val in sublist]
 
 
@@ -43,6 +51,7 @@ def create_desription_single_file(json_file: str, for_json: dict, path_to_save: 
     """
     Creating a description for a single file according to the example of
     https://github.com/matterport/Mask_RCNN/releases/
+    Adding keypoints in addition for the csl net to compare them with the groundtruth
 
     Args:
         json_file: file from whcih we get the whole infromation is an originally generated annotated
@@ -55,19 +64,30 @@ def create_desription_single_file(json_file: str, for_json: dict, path_to_save: 
         A filled dict `for_json` wil a filled information about the json_file
         {'frame_00000.png':
         {'fileref': '',
-         'size': 1555200,
-         'height': 540,
-         'width': 960,
-         'base64_img_data': '',
-         'file_attributes': {},
-         'regions':
-         {'8': {'name': 'polygon',
-                'all_points_x': [0.0, 435.037037037037, 441.2098765432099, 452.32098765432096, ,.....
-            354.7901234567901, 125.0, 1.0864197530864197],
-                'all_points_y': [521.0, 297.1358024691358, 284.1728395061728, 285.4074074074074,.......
-            333.55555555555554, 343.4320987654321, 357.6296296296296, 415.037037037037, 539.0, 538.4938271604938],
-             '  region_attributes': {},
-                'label': 'grasper'},
+         'filename': 'frame_00000.png',
+          'size': 1555200,
+          'height': 540,
+          'width': 960,
+          'base64_img_data': '',
+          'file_attributes': {},
+          'regions':
+            {'8':
+                {'shape_attributes':
+                    {'keypoints':
+                        {'center': [509.5652173913043, 270.3478260869565],
+                         'shaft': [425.21739130434776, 312.9565217391304],
+                         'jaw': [[616.5217391304348, 257.30434782608694], [532.1739130434783, 221.65217391304344]],
+                         'joint': []
+                    },
+                     'name': 'polygon',
+                     'all_points_x': [0.0, 435.037037037037, 441.2098765432099, 452.32098765432096, ....]
+                     'all_points_y': [521.0, 297.1358024691358, 284.1728395061728, 285.4074074074074, 274.2962962962963, 229.23456790123456, 219.358024691358, 218.12345679012344, 223.06172839506172, 252.07407407407408, 252.07407407407408, 239.72839506172835, 263.18518518518516, 268.12345679012344, 273.679012345679, 261.3333333333333, 250.22222222222223, 265.65432098765433, 280.4691358024691, 292.8148148148148, 284.7901234567901, 269.9753086419753, 287.25925925925924, 295.9012345679012, 315.6543209876543, 322.4444444444444, 324.91358024691357, 333.55555555555554, 343.4320987654321, 357.6296296296296, 415.037037037037, 539.0, 538.4938271604938],
+                     'category_id': 1002},
+                     'region_attributes': {}
+                }
+                         ,
+            ......
+            }}}
 
     """
     data = json.load(open(json_file))
@@ -101,6 +121,7 @@ def create_desription_single_file(json_file: str, for_json: dict, path_to_save: 
                     # get all keypoints that correspoinf to group_id
                     # firstly found every keypoint for an instance based on the polygon_id
                     # fill a dict with points
+                    # if there are no points we add an empty list
                     group_id = shape['group_id']
                     keypoints_dict = dict()
                     keypoints_of_shape =  [keypoint for keypoint in data['shapes'] if keypoint['group_id'] == group_id
