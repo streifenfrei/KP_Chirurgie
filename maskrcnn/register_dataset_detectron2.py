@@ -34,6 +34,10 @@ def save_img_from_base(filename: str, img_data: np.ndarray, path_to_save: str) -
     image = Image.fromarray(img_data)
     image.save(f"{path_to_save}" + filename)
 
+def flatten_list(list_of_lists):
+    return [val for sublist in list_of_lists for val in sublist]
+
+
 
 def create_desription_single_file(json_file: str, for_json: dict, path_to_save: str, save_image: bool = False) -> dict:
     """
@@ -71,6 +75,8 @@ def create_desription_single_file(json_file: str, for_json: dict, path_to_save: 
         imageData = data.get('imageData')
         if (imageData is not None) and (imageData != ''):
             img = dl.img_b64_to_arr(imageData)
+            shapes_json = data['shapes']
+            # dl.load_pose(img.shape, shapes_json, dl.landmark_name_to_id_, pose_sigma=7)
             height, width = img.shape[:2]
             shapes = data['shapes']
             filename = data['imagePath']
@@ -92,7 +98,33 @@ def create_desription_single_file(json_file: str, for_json: dict, path_to_save: 
 
             for index, shape in enumerate(shapes):
                 if shape['shape_type'] == 'polygon':
+                    # get all keypoints that correspoinf to group_id
+                    # firstly found every keypoint for an instance based on the polygon_id
+                    # fill a dict with points
+                    group_id = shape['group_id']
+                    keypoints_dict = dict()
+                    keypoints_of_shape =  [keypoint for keypoint in data['shapes'] if keypoint['group_id'] == group_id
+                                           and keypoint['shape_type'] != 'polygon']
+                    # jaw_list = [keypoint['points'] for keypoint in keypoints_of_shape if keypoint['label']=='jaw']
+                    jaw_list = []
+                    for instance_keypoint in keypoints_of_shape:
+                        if instance_keypoint['label']=='center':
+                            keypoints_dict['center'] = flatten_list(instance_keypoint['points'])
+                        elif instance_keypoint['label']=='jaw':
+                            jaw_list.append(flatten_list(instance_keypoint['points']))
+                        elif instance_keypoint['label']=='shaft':
+                            keypoints_dict['shaft'] = flatten_list(instance_keypoint['points'])
+                        elif instance_keypoint['label']=='joint':
+                            keypoints_dict['shaft'] = flatten_list(instance_keypoint['points'])
+                    keypoints_dict['jaw'] = jaw_list
+                    if 'joint' not in keypoints_dict:
+                        keypoints_dict['joint'] = []
+
                     shape_attr = dict()
+                    #TODO: think whether to use a list instead of dict
+                    # dict makes it mossible to identify the label based on the key
+                    # -> so we are sure when we access over the key that it is this value
+                    shape_attr['keypoints'] = keypoints_dict
                     shape_attr['name'] = 'polygon'
                     all_points_x = list()
                     all_points_y = list()
@@ -108,6 +140,7 @@ def create_desription_single_file(json_file: str, for_json: dict, path_to_save: 
                     shape_attribute['shape_attributes'] = shape_attr
                     shape_attribute["region_attributes"] = {}
                     regions[str(index)] = shape_attribute
+
     except ValueError:
         print(f'Failed to process {json_file =}')
     return for_json
