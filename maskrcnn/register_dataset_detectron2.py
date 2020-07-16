@@ -119,6 +119,13 @@ def create_desription_single_file(json_file: str, for_json: dict, path_to_save: 
                     keypoints_dict['jaw'] = jaw_list
                     if 'joint' not in keypoints_dict:
                         keypoints_dict['joint'] = []
+                    if 'center' not in keypoints_dict:
+                        keypoints_dict['center'] = []
+                    if 'jaw' not in keypoints_dict:
+                        keypoints_dict['jaw'] = []
+                    if 'shaft' not in keypoints_dict:
+                        keypoints_dict['shaft'] = []
+
 
                     shape_attr = dict()
                     #TODO: think whether to use a list instead of dict
