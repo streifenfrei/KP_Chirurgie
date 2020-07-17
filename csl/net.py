@@ -190,6 +190,8 @@ class CSLNet(nn.Module):
         loader = train_val_dataset(dataset, validation_split=0, train_batch_size=batch_size,
                                    valid_batch_size=batch_size, shuffle_dataset=True)[0]
         self.eval()
+        import matplotlib
+        matplotlib.use('Agg')
         import matplotlib.pyplot as plt
         i = 0
         for batch in loader:

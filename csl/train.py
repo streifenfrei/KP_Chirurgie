@@ -71,7 +71,7 @@ def call_model(workspace, dataset, normalize_heatmap=False, batch_size=2, sigma=
     if device == 'cuda':
         del checkpoint
         torch.cuda.empty_cache()
-    #model.visualize(dataset, device, batch_size=batch_size)
+    model.visualize(dataset, device, batch_size=batch_size)
     #model.show_loc_result(dataset, device, batch_size=batch_size)
     model.show_all_result(dataset, device, batch_size=1)
 
