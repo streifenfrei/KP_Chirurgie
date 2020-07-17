@@ -13,6 +13,9 @@ from typing import List, Tuple
 import math
 
 # import some common detectron2 utilities
+import detectron2.data.transforms as T
+from detectron2.data import DatasetMapper
+from detectron2.data import detection_utils as utils
 from detectron2 import model_zoo
 from detectron2.engine import DefaultPredictor
 from detectron2.utils.visualizer import Visualizer
@@ -20,15 +23,17 @@ from detectron2.data import DatasetCatalog, MetadataCatalog
 from detectron2.utils.visualizer import ColorMode
 from detectron2.engine import DefaultTrainer
 from detectron2.config import get_cfg
-
+from detectron2.config import CfgNode
 from pprint import pprint
 import os
 import numpy as np
 import json
 from detectron2.structures import BoxMode
-
 from detectron2.utils.events import get_event_storage
 
+# from maskrcnn.custom_dataloader import mapper
+from detectron2.data import build_detection_train_loader
+import copy
 # inside the model:
 
 
@@ -107,11 +112,13 @@ def get_balloon_dicts(img_dir: str,
             poly = [(x + 0.5, y + 0.5) for x, y in zip(px, py)]
             poly = [p for x in poly for p in x]
 
+
             obj = {
                 "bbox": [np.min(px), np.min(py), np.max(px), np.max(py)],
                 "bbox_mode": BoxMode.XYXY_ABS,
                 "segmentation": [poly],
                 "category_id": anno['category_id'],
+                "keypoints" : anno['keypoints']
             }
             objs.append(obj)
         record["annotations"] = objs
@@ -183,8 +190,68 @@ def load_config(config_path: str = None):
     return cfg
 
 
+def mapper(dataset_dict):
+    # Here we implement a minimal mapper for instance detection/segmentation
+    dataset_dict = copy.deepcopy(dataset_dict)  # it will be modified by code below
+    image = utils.read_image(dataset_dict["file_name"], format="BGR")
+    dataset_dict["image"] = torch.as_tensor(image.transpose(2, 0, 1))
+    annos = [
+        utils.transform_instance_annotations(obj, transforms, image.shape[:2])
+        for obj in dataset_dict.pop("annotations")
+    ]
+    dataset_dict["instances"] = utils.annotations_to_instances(annos, image.shape[:2])
+    return dataset_dict
+
+
+class Trainer(DefaultTrainer):
+    # @classmethod
+    # def build_evaluator(cls, cfg: CfgNode, dataset_name, output_folder=None):
+    #     if output_folder is None:
+    #         output_folder = os.path.join(cfg.OUTPUT_DIR, "inference")
+    #     evaluators = [COCOEvaluator(dataset_name, cfg, True, output_folder)]
+    #     if cfg.MODEL.DENSEPOSE_ON:
+    #         evaluators.append(DensePoseCOCOEvaluator(dataset_name, True, output_folder))
+    #     return DatasetEvaluators(evaluators)
+
+    @classmethod
+    def build_test_loader(cls, cfg: CfgNode, dataset_name):
+        return build_detection_test_loader(cfg, dataset_name, mapper=DatasetMapper(cfg, False))
+
+    @classmethod
+    def build_train_loader(cls, cfg: CfgNode):
+        return build_detection_train_loader(cfg, mapper=mapper)
+
+    # @classmethod
+    # def test_with_TTA(cls, cfg: CfgNode, model):
+    #     logger = logging.getLogger("detectron2.trainer")
+    #     # In the end of training, run an evaluation with TTA
+    #     # Only support some R-CNN models.
+    #     logger.info("Running inference with test-time augmentation ...")
+    #     transform_data = load_from_cfg(cfg)
+    #     model = DensePoseGeneralizedRCNNWithTTA(
+    #         cfg, model, transform_data, DensePoseDatasetMapperTTA(cfg)
+    #     )
+    #     evaluators = [
+    #         cls.build_evaluator(
+    #             cfg, name, output_folder=os.path.join(cfg.OUTPUT_DIR, "inference_TTA")
+    #         )
+    #         for name in cfg.DATASETS.TEST
+    #     ]
+    #     res = cls.test(cfg, model, evaluators)
+    #     res = OrderedDict({k + "_TTA": v for k, v in res.items()})
+    #     return res
+
+
+
+
+
+
+
+
 def start_training(cfg):
-    trainer = DefaultTrainer(cfg)
+
+    # trainer = DefaultTrainer(cfg)
+    trainer = Trainer(cfg)
     trainer.resume_or_load(resume=True)
     trainer.train()
 
