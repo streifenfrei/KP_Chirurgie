@@ -192,9 +192,12 @@ def load_config(config_path: str = None):
 
 def mapper(dataset_dict):
     # Here we implement a minimal mapper for instance detection/segmentation
+    #TODO: call here load_pose from Xi
     dataset_dict = copy.deepcopy(dataset_dict)  # it will be modified by code below
     image = utils.read_image(dataset_dict["file_name"], format="BGR")
-    dataset_dict["image"] = torch.as_tensor(image.transpose(2, 0, 1))
+    #
+    # dataset_dict["image"] = torch.from_numpy(image.transpose(2, 0, 1))
+    dataset_dict["image"] = torch.as_tensor(image.transpose(2, 0, 1).astype("float32"))
     annos = [
         utils.transform_instance_annotations(obj, transforms, image.shape[:2])
         for obj in dataset_dict.pop("annotations")
