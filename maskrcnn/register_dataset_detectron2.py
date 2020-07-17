@@ -9,6 +9,7 @@ import glob
 from pprint import pprint
 from typing import List, Dict
 from PIL import Image
+import cv2
 
 # Detectron 2 requires an integer instead of a class label as a string
 # This is a dict for mapping the class labels to integers
@@ -69,14 +70,17 @@ def create_desription_single_file(json_file: str, for_json: dict, path_to_save: 
     data = json.load(open(json_file))
     try:
         imageData = data.get('imageData')
-        if (imageData is not None) and (imageData != ''):
-            img = dl.img_b64_to_arr(imageData)
+        filename_without_extension = os.path.splitext(os.path.basename(json_file))[0]
+        single_image = {}
+        filename = filename_without_extension + '.png'
+        img = cv2.imread(f"{path_to_save}/{filename}")
+        if (img is not None) and (img != ''):
+            #img = dl.img_b64_to_arr(imageData)
+
             height, width = img.shape[:2]
             shapes = data['shapes']
-            filename = data['imagePath']
-            filename_without_extension = os.path.splitext(os.path.basename(json_file))[0]
-            single_image = {}
-            filename = filename_without_extension + '.png'
+            #filename = data['imagePath']
+
             for_json[str(filename)] = single_image
             single_image['fileref'] = ""
             single_image['filename'] = filename
