@@ -12,6 +12,17 @@ import cv2
 from typing import List, Tuple
 import math
 
+from detectron2.structures import (
+    BitMasks,
+    Boxes,
+    BoxMode,
+    Instances,
+    Keypoints,
+    PolygonMasks,
+    RotatedBoxes,
+    polygons_to_bitmask,
+)
+
 # import some common detectron2 utilities
 import detectron2.data.transforms as T
 from detectron2.data import DatasetMapper
@@ -197,24 +208,175 @@ def load_config(config_path: str = None):
     return cfg
 
 
+def transform_instance_annotations(annotation, transforms, image_size, *, keypoint_hflip_indices=None):
+    """
+    Apply transforms to box, segmentation and keypoints annotations of a single instance.
+
+    It will use `transforms.apply_box` for the box, and
+    `transforms.apply_coords` for segmentation polygons & keypoints.
+    If you need anything more specially designed for each data structure,
+    you'll need to implement your own version of this function or the transforms.
+
+    Args:
+        annotation (dict): dict of instance annotations for a single instance.
+            It will be modified in-place.
+        transforms (TransformList):
+        image_size (tuple): the height, width of the transformed image
+        keypoint_hflip_indices (ndarray[int]): see `create_keypoint_hflip_indices`.
+
+    Returns:
+        dict:
+            the same input dict with fields "bbox", "segmentation", "keypoints"
+            transformed according to `transforms`.
+            The "bbox_mode" field will be set to XYXY_ABS.
+    """
+    bbox = BoxMode.convert(annotation["bbox"], annotation["bbox_mode"], BoxMode.XYXY_ABS)
+    # Note that bbox is 1d (per-instance bounding box)
+    annotation["bbox"] = transforms.apply_box([bbox])[0]
+    annotation["bbox_mode"] = BoxMode.XYXY_ABS
+
+    if "segmentation" in annotation:
+        # each instance contains 1 or more polygons
+        segm = annotation["segmentation"]
+        if isinstance(segm, list):
+            # polygons
+            polygons = [np.asarray(p).reshape(-1, 2) for p in segm]
+            annotation["segmentation"] = [
+                p.reshape(-1) for p in transforms.apply_polygons(polygons)
+            ]
+        elif isinstance(segm, dict):
+            # RLE
+            mask = mask_util.decode(segm)
+            mask = transforms.apply_segmentation(mask)
+            assert tuple(mask.shape[:2]) == image_size
+            annotation["segmentation"] = mask
+        else:
+            raise ValueError(
+                "Cannot transform segmentation of type '{}'!"
+                "Supported types are: polygons as list[list[float] or ndarray],"
+                " COCO-style RLE as a dict.".format(type(segm))
+            )
+
+    if "keypoints_csl" in annotation:
+        keypoints = transform_keypoint_annotations(
+            annotation["keypoints_csl"], transforms, image_size, keypoint_hflip_indices
+        )
+        annotation["keypoints_csl"] = keypoints
+
+    return annotation
+
+
+def annotations_to_instances(annos, image_size, mask_format="polygon"):
+    """
+    Create an :class:`Instances` object used by the models,
+    from instance annotations in the dataset dict.
+
+    Args:
+        annos (list[dict]): a list of instance annotations in one image, each
+            element for one instance.
+        image_size (tuple): height, width
+
+    Returns:
+        Instances:
+            It will contain fields "gt_boxes", "gt_classes",
+            "gt_masks", "gt_keypoints", if they can be obtained from `annos`.
+            This is the format that builtin models expect.
+    """
+    boxes = [BoxMode.convert(obj["bbox"], obj["bbox_mode"], BoxMode.XYXY_ABS) for obj in annos]
+    target = Instances(image_size)
+    boxes = target.gt_boxes = Boxes(boxes)
+    boxes.clip(image_size)
+
+    classes = [obj["category_id"] for obj in annos]
+    classes = torch.tensor(classes, dtype=torch.int64)
+    target.gt_classes = classes
+
+    if len(annos) and "segmentation" in annos[0]:
+        segms = [obj["segmentation"] for obj in annos]
+        if mask_format == "polygon":
+            masks = PolygonMasks(segms)
+        else:
+            assert mask_format == "bitmask", mask_format
+            masks = []
+            for segm in segms:
+                if isinstance(segm, list):
+                    # polygon
+                    masks.append(polygons_to_bitmask(segm, *image_size))
+                elif isinstance(segm, dict):
+                    # COCO RLE
+                    masks.append(mask_util.decode(segm))
+                elif isinstance(segm, np.ndarray):
+                    assert segm.ndim == 2, "Expect segmentation of 2 dimensions, got {}.".format(
+                        segm.ndim
+                    )
+                    # mask array
+                    masks.append(segm)
+                else:
+                    raise ValueError(
+                        "Cannot convert segmentation of type '{}' to BitMasks!"
+                        "Supported types are: polygons as list[list[float] or ndarray],"
+                        " COCO-style RLE as a dict, or a full-image segmentation mask "
+                        "as a 2D ndarray.".format(type(segm))
+                    )
+            # torch.from_numpy does not support array with negative stride.
+            masks = BitMasks(
+                torch.stack([torch.from_numpy(np.ascontiguousarray(x)) for x in masks])
+            )
+        target.gt_masks = masks
+
+
+    #todo: add here the keypoints processing
+    if len(annos) and "keypoints_csl" in annos[0]:
+        kpts = [obj.get("keypoints_csl", []) for obj in annos]
+        target.gt_keypoints = Keypoints(kpts)
+
+    return target
+
+
 def mapper(dataset_dict):
     # Here we implement a minimal mapper for instance detection/segmentation
 
-    dataset_dict = copy.deepcopy(dataset_dict)  # it will be modified by code below
+    dataset_dict = copy.deepcopy(dataset_dict)# it will be modified by code below
+    dataset_dict_copy = copy.copy(dataset_dict)
     image = utils.read_image(dataset_dict["file_name"], format="BGR")
     #
     # dataset_dict["image"] = torch.from_numpy(image.transpose(2, 0, 1))
     dataset_dict["image"] = torch.as_tensor(image.transpose(2, 0, 1).astype("float32"))
     transform_list = [T.RandomFlip(prob=0.6, horizontal=True, vertical=False),
                       T.RandomFlip(prob=0.6, horizontal=False, vertical=True)]
-    image, transforms = T.apply_transform_gens(transform_list, image)
-    annos = [
-        utils.transform_instance_annotations(obj, transforms, image.shape[:2])
-        for obj in dataset_dict.pop("annotations")
-    ]
-    dataset_dict["instances"] = utils.annotations_to_instances(annos, image.shape[:2])
+
+    #todo: use the transofrmations for the keypoints
+
+    # image, transforms = T.apply_transform_gens(transform_list, image)
+    # annos = [
+    #     transform_instance_annotations(obj, transforms, image.shape[:2])
+    #     for obj in dataset_dict.pop("annotations")
+    # ]
+
+    dataset_dict["instances"] = annotations_to_instances(dataset_dict['annotations'], image.shape[:2])
     # TODO: call here load_pose from Xi
     dataset_dict['instances']._fields['gt_jaw']= torch.ones(2)
+
+    image = dataset_dict["image"].numpy()
+    seg_image = np.zeros_like(image, dtype=int)
+
+    # create a imagessize zero array and put on a position of coordinates a certain value accroding to encoding
+    # landmark_name_to_id_
+    # seg_image = max_gaussian_help(cls, pose_sigma, 1)
+    # normalize_heatmap == True:
+    # for each_class in landmark_name_to_id:
+    #     if each_class != 'jaw':
+    #         seg_image_cls = max_gaussian_help(cls, pose_sigma, landmark_name_to_id[each_class])
+    #         seg_image = np.dstack((seg_image, seg_image_cls))
+    # if normalize_heatmap == True:
+    #     seg_image = seg_image * 2 * np.pi * pose_sigma * pose_sigma
+    # else:
+    #     seg_image_cls = seg_image_cls * np.sqrt(2 * np.pi) * pose_sigma
+
+
+    # for point in jaw:
+        # position is to 1
+
     # dataset_dict['jaw'] = []
     # dataset_dict['shaft'] = []
     # dataset_dict['center'] = []
