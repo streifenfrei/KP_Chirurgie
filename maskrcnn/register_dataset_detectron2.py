@@ -152,7 +152,7 @@ def create_desription_single_file(json_file: str, for_json: dict, path_to_save: 
                     #TODO: think whether to use a list instead of dict
                     # dict makes it mossible to identify the label based on the key
                     # -> so we are sure when we access over the key that it is this value
-                    shape_attr['keypoints'] = keypoints_dict
+                    shape_attr['keypoints_csl'] = keypoints_dict
                     shape_attr['name'] = 'polygon'
                     all_points_x = list()
                     all_points_y = list()
