@@ -32,9 +32,16 @@ from detectron2.structures import BoxMode
 from detectron2.utils.events import get_event_storage
 
 # from maskrcnn.custom_dataloader import mapper
-from detectron2.data import build_detection_train_loader
+from detectron2.data import build_detection_train_loader, build_detection_test_loader
 import copy
 # inside the model:
+
+landmark_name_to_id_ = {
+'jaw':1,
+'center':2,
+'joint':3,
+'shaft':4
+}
 
 
 def inference_old_model(image_path: str = "../dataset/frame_00000.png") -> None:
@@ -207,7 +214,11 @@ def mapper(dataset_dict):
     ]
     dataset_dict["instances"] = utils.annotations_to_instances(annos, image.shape[:2])
     # TODO: call here load_pose from Xi
-    dataset_dict['csl'] = []
+    dataset_dict['instances']._fields['gt_jaw']= torch.ones(2)
+    # dataset_dict['jaw'] = []
+    # dataset_dict['shaft'] = []
+    # dataset_dict['center'] = []
+    # dataset_dict['joint'] =[]
     return dataset_dict
 
 
