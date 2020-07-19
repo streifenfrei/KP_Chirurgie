@@ -12,7 +12,21 @@ import cv2
 from typing import List, Tuple
 import math
 
+from detectron2.structures import (
+    BitMasks,
+    Boxes,
+    BoxMode,
+    Instances,
+    Keypoints,
+    PolygonMasks,
+    RotatedBoxes,
+    polygons_to_bitmask,
+)
+
 # import some common detectron2 utilities
+import detectron2.data.transforms as T
+from detectron2.data import DatasetMapper
+from detectron2.data import detection_utils as utils
 from detectron2 import model_zoo
 from detectron2.engine import DefaultPredictor
 from detectron2.utils.visualizer import Visualizer
@@ -20,16 +34,25 @@ from detectron2.data import DatasetCatalog, MetadataCatalog
 from detectron2.utils.visualizer import ColorMode
 from detectron2.engine import DefaultTrainer
 from detectron2.config import get_cfg
-
+from detectron2.config import CfgNode
 from pprint import pprint
 import os
 import numpy as np
 import json
 from detectron2.structures import BoxMode
-
 from detectron2.utils.events import get_event_storage
 
+# from maskrcnn.custom_dataloader import mapper
+from detectron2.data import build_detection_train_loader, build_detection_test_loader
+import copy
 # inside the model:
+
+landmark_name_to_id_ = {
+'jaw':1,
+'center':2,
+'joint':3,
+'shaft':4
+}
 
 
 def inference_old_model(image_path: str = "../dataset/frame_00000.png") -> None:
@@ -107,11 +130,13 @@ def get_balloon_dicts(img_dir: str,
             poly = [(x + 0.5, y + 0.5) for x, y in zip(px, py)]
             poly = [p for x in poly for p in x]
 
+
             obj = {
                 "bbox": [np.min(px), np.min(py), np.max(px), np.max(py)],
                 "bbox_mode": BoxMode.XYXY_ABS,
                 "segmentation": [poly],
                 "category_id": anno['category_id'],
+                "keypoints_csl" : anno['keypoints_csl']
             }
             objs.append(obj)
         record["annotations"] = objs
@@ -175,6 +200,7 @@ def test_registration(instruments_metadata: detectron2.data.catalog.Metadata,
 def load_config(config_path: str = None):
     assert config_path
     cfg = get_cfg()
+    # cfg.merge_from_file(model_zoo.get_config_file("COCO-InstanceSegmentation/mask_rcnn_R_50_FPN_3x.yaml"))
     cfg.merge_from_file(config_path)
     #cfg.MODEL.WEIGHTS = model_zoo.get_checkpoint_url(
      #   "COCO-InstanceSegmentation/mask_rcnn_R_50_FPN_3x.yaml")
@@ -182,8 +208,231 @@ def load_config(config_path: str = None):
     return cfg
 
 
+def transform_instance_annotations(annotation, transforms, image_size, *, keypoint_hflip_indices=None):
+    """
+    Apply transforms to box, segmentation and keypoints annotations of a single instance.
+
+    It will use `transforms.apply_box` for the box, and
+    `transforms.apply_coords` for segmentation polygons & keypoints.
+    If you need anything more specially designed for each data structure,
+    you'll need to implement your own version of this function or the transforms.
+
+    Args:
+        annotation (dict): dict of instance annotations for a single instance.
+            It will be modified in-place.
+        transforms (TransformList):
+        image_size (tuple): the height, width of the transformed image
+        keypoint_hflip_indices (ndarray[int]): see `create_keypoint_hflip_indices`.
+
+    Returns:
+        dict:
+            the same input dict with fields "bbox", "segmentation", "keypoints"
+            transformed according to `transforms`.
+            The "bbox_mode" field will be set to XYXY_ABS.
+    """
+    bbox = BoxMode.convert(annotation["bbox"], annotation["bbox_mode"], BoxMode.XYXY_ABS)
+    # Note that bbox is 1d (per-instance bounding box)
+    annotation["bbox"] = transforms.apply_box([bbox])[0]
+    annotation["bbox_mode"] = BoxMode.XYXY_ABS
+
+    if "segmentation" in annotation:
+        # each instance contains 1 or more polygons
+        segm = annotation["segmentation"]
+        if isinstance(segm, list):
+            # polygons
+            polygons = [np.asarray(p).reshape(-1, 2) for p in segm]
+            annotation["segmentation"] = [
+                p.reshape(-1) for p in transforms.apply_polygons(polygons)
+            ]
+        elif isinstance(segm, dict):
+            # RLE
+            mask = mask_util.decode(segm)
+            mask = transforms.apply_segmentation(mask)
+            assert tuple(mask.shape[:2]) == image_size
+            annotation["segmentation"] = mask
+        else:
+            raise ValueError(
+                "Cannot transform segmentation of type '{}'!"
+                "Supported types are: polygons as list[list[float] or ndarray],"
+                " COCO-style RLE as a dict.".format(type(segm))
+            )
+
+    if "keypoints_csl" in annotation:
+        keypoints = transform_keypoint_annotations(
+            annotation["keypoints_csl"], transforms, image_size, keypoint_hflip_indices
+        )
+        annotation["keypoints_csl"] = keypoints
+
+    return annotation
+
+
+def annotations_to_instances(annos, image_size, mask_format="polygon"):
+    """
+    Create an :class:`Instances` object used by the models,
+    from instance annotations in the dataset dict.
+
+    Args:
+        annos (list[dict]): a list of instance annotations in one image, each
+            element for one instance.
+        image_size (tuple): height, width
+
+    Returns:
+        Instances:
+            It will contain fields "gt_boxes", "gt_classes",
+            "gt_masks", "gt_keypoints", if they can be obtained from `annos`.
+            This is the format that builtin models expect.
+    """
+    boxes = [BoxMode.convert(obj["bbox"], obj["bbox_mode"], BoxMode.XYXY_ABS) for obj in annos]
+    target = Instances(image_size)
+    boxes = target.gt_boxes = Boxes(boxes)
+    boxes.clip(image_size)
+
+    classes = [obj["category_id"] for obj in annos]
+    classes = torch.tensor(classes, dtype=torch.int64)
+    target.gt_classes = classes
+
+    if len(annos) and "segmentation" in annos[0]:
+        segms = [obj["segmentation"] for obj in annos]
+        if mask_format == "polygon":
+            masks = PolygonMasks(segms)
+        else:
+            assert mask_format == "bitmask", mask_format
+            masks = []
+            for segm in segms:
+                if isinstance(segm, list):
+                    # polygon
+                    masks.append(polygons_to_bitmask(segm, *image_size))
+                elif isinstance(segm, dict):
+                    # COCO RLE
+                    masks.append(mask_util.decode(segm))
+                elif isinstance(segm, np.ndarray):
+                    assert segm.ndim == 2, "Expect segmentation of 2 dimensions, got {}.".format(
+                        segm.ndim
+                    )
+                    # mask array
+                    masks.append(segm)
+                else:
+                    raise ValueError(
+                        "Cannot convert segmentation of type '{}' to BitMasks!"
+                        "Supported types are: polygons as list[list[float] or ndarray],"
+                        " COCO-style RLE as a dict, or a full-image segmentation mask "
+                        "as a 2D ndarray.".format(type(segm))
+                    )
+            # torch.from_numpy does not support array with negative stride.
+            masks = BitMasks(
+                torch.stack([torch.from_numpy(np.ascontiguousarray(x)) for x in masks])
+            )
+        target.gt_masks = masks
+
+
+    #todo: add here the keypoints processing
+    if len(annos) and "keypoints_csl" in annos[0]:
+        kpts = [obj.get("keypoints_csl", []) for obj in annos]
+        target.gt_keypoints = Keypoints(kpts)
+
+    return target
+
+
+def mapper(dataset_dict):
+    # Here we implement a minimal mapper for instance detection/segmentation
+
+    dataset_dict = copy.deepcopy(dataset_dict)# it will be modified by code below
+    dataset_dict_copy = copy.copy(dataset_dict)
+    image = utils.read_image(dataset_dict["file_name"], format="BGR")
+    #
+    # dataset_dict["image"] = torch.from_numpy(image.transpose(2, 0, 1))
+    dataset_dict["image"] = torch.as_tensor(image.transpose(2, 0, 1).astype("float32"))
+    transform_list = [T.RandomFlip(prob=0.6, horizontal=True, vertical=False),
+                      T.RandomFlip(prob=0.6, horizontal=False, vertical=True)]
+
+    #todo: use the transofrmations for the keypoints
+
+    # image, transforms = T.apply_transform_gens(transform_list, image)
+    # annos = [
+    #     transform_instance_annotations(obj, transforms, image.shape[:2])
+    #     for obj in dataset_dict.pop("annotations")
+    # ]
+
+    dataset_dict["instances"] = annotations_to_instances(dataset_dict['annotations'], image.shape[:2])
+    # TODO: call here load_pose from Xi
+    dataset_dict['instances']._fields['gt_jaw']= torch.ones(2)
+
+    image = dataset_dict["image"].numpy()
+    seg_image = np.zeros_like(image, dtype=int)
+
+    # create a imagessize zero array and put on a position of coordinates a certain value accroding to encoding
+    # landmark_name_to_id_
+    # seg_image = max_gaussian_help(cls, pose_sigma, 1)
+    # normalize_heatmap == True:
+    # for each_class in landmark_name_to_id:
+    #     if each_class != 'jaw':
+    #         seg_image_cls = max_gaussian_help(cls, pose_sigma, landmark_name_to_id[each_class])
+    #         seg_image = np.dstack((seg_image, seg_image_cls))
+    # if normalize_heatmap == True:
+    #     seg_image = seg_image * 2 * np.pi * pose_sigma * pose_sigma
+    # else:
+    #     seg_image_cls = seg_image_cls * np.sqrt(2 * np.pi) * pose_sigma
+
+
+    # for point in jaw:
+        # position is to 1
+
+    # dataset_dict['jaw'] = []
+    # dataset_dict['shaft'] = []
+    # dataset_dict['center'] = []
+    # dataset_dict['joint'] =[]
+    return dataset_dict
+
+
+class Trainer(DefaultTrainer):
+    # @classmethod
+    # def build_evaluator(cls, cfg: CfgNode, dataset_name, output_folder=None):
+    #     if output_folder is None:
+    #         output_folder = os.path.join(cfg.OUTPUT_DIR, "inference")
+    #     evaluators = [COCOEvaluator(dataset_name, cfg, True, output_folder)]
+    #     if cfg.MODEL.DENSEPOSE_ON:
+    #         evaluators.append(DensePoseCOCOEvaluator(dataset_name, True, output_folder))
+    #     return DatasetEvaluators(evaluators)
+
+    @classmethod
+    def build_test_loader(cls, cfg: CfgNode, dataset_name):
+        return build_detection_test_loader(cfg, dataset_name, mapper=DatasetMapper(cfg, False))
+
+    @classmethod
+    def build_train_loader(cls, cfg: CfgNode):
+        return build_detection_train_loader(cfg, mapper=mapper)
+
+    # @classmethod
+    # def test_with_TTA(cls, cfg: CfgNode, model):
+    #     logger = logging.getLogger("detectron2.trainer")
+    #     # In the end of training, run an evaluation with TTA
+    #     # Only support some R-CNN models.
+    #     logger.info("Running inference with test-time augmentation ...")
+    #     transform_data = load_from_cfg(cfg)
+    #     model = DensePoseGeneralizedRCNNWithTTA(
+    #         cfg, model, transform_data, DensePoseDatasetMapperTTA(cfg)
+    #     )
+    #     evaluators = [
+    #         cls.build_evaluator(
+    #             cfg, name, output_folder=os.path.join(cfg.OUTPUT_DIR, "inference_TTA")
+    #         )
+    #         for name in cfg.DATASETS.TEST
+    #     ]
+    #     res = cls.test(cfg, model, evaluators)
+    #     res = OrderedDict({k + "_TTA": v for k, v in res.items()})
+    #     return res
+
+
+
+
+
+
+
+
 def start_training(cfg):
-    trainer = DefaultTrainer(cfg)
+
+    # trainer = DefaultTrainer(cfg)
+    trainer = Trainer(cfg)
     trainer.resume_or_load(resume=True)
     trainer.train()
 
@@ -220,13 +469,9 @@ def main():
     setup_logger(os.path.join(cfg.OUTPUT_DIR, 'saved_logs.log'))
 
     classes_list = ['scissors', 'needle_holder', 'grasper']
-    # path_to_data = "../dataset/instruments/"
     instruments_metadata = register_dataset_and_metadata(args.dataset, classes_list)
-    # path_to_training_data = "../dataset/instruments/train"
-    path_to_training_data = "/Users/chernykh_alexander/Yandex.Disk.localized/CloudTUD/Komp_CHRIRURGIE/instruments/train"
-    path_to_val_data = "/Users/chernykh_alexander/Yandex.Disk.localized/CloudTUD/Komp_CHRIRURGIE/instruments/val"
-    # test_registration(instruments_metadata, path_to_val_data,
-    #                   json_with_desription_name="dataset_registration_detectron2.json")
+    # path_to_val_data = "/Users/chernykh_alexander/Yandex.Disk.localized/CloudTUD/Komp_CHRIRURGIE/instruments/val"
+    # test_registration(instruments_metadata, path_to_val_data, json_with_desription_name="dataset_registration_detectron2.json")
 
     # inference_old_model()
     start_training(cfg)
