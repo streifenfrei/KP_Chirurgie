@@ -5,12 +5,12 @@ import scipy.ndimage.filters as filters
 import matplotlib.pyplot as plt
 import cv2
 from dataLoader import image_transform, OurDataLoader, train_val_dataset
-
+    
 
 #https://stackoverflow.com/questions/9111711/get-coordinates-of-local-maxima-in-2d-array-above-certain-value
 def non_max_suppression(img_landmark):
-    neighborhood_size = 10
-    threshold = 0.3
+    neighborhood_size = 7
+    threshold = 0.4
     print(np.amax(img_landmark))
     data = np.array(img_landmark* 256, dtype=int) 
 
@@ -39,25 +39,37 @@ def nearest_neighbors(target_xy, array):
     return np.argsort(np.array([np.linalg.norm(target_xy-x) for x in array]))[0]
     
 def findNN(image_label, image_predicted, save_name):
-    
+    TP = 0
+    FP = 0
+    FN = 0
+
     xy_label = non_max_suppression(image_label)
-    image_predicted = applyThreshold(image_predicted, 0.25)
+    image_predicted = applyThreshold(image_predicted, 0.4)
     xy_predict = non_max_suppression(image_predicted)
-    print(xy_predict)
-    if(len(xy_predict)==0):
-        print('empty: ', save_name)
-        return -1
 
     pair_list = []
     for i in xy_label:
-        print(xy_predict)
+        if(len(xy_predict)==0):
+            FN += 1
+            continue
         nn_id = nearest_neighbors(i, xy_predict)
+
+        if np.linalg.norm(i-xy_predict[nn_id])>50:
+            continue
+
         pair_list.append([i, xy_predict[nn_id]])
-        np.delete(xy_predict, nn_id)
+        xy_predict = np.delete(xy_predict, nn_id, 0)
+        TP += 1
+
+    if(len(xy_predict)!=0):
+        FP = len(xy_predict)
+
     pair_array = np.array(pair_list)
     print(pair_array)
 
-    
+    if save_name == None:
+        return pair_array,[TP,FP,FN]
+
     fig=plt.figure(figsize=(12, 6))
     fig.add_subplot(1,3,1)    
     plt.imshow(image_label)
@@ -70,8 +82,8 @@ def findNN(image_label, image_predicted, save_name):
         plt.plot(pair[1][0],pair[1][1], 'b+', markersize=15)
         plt.plot([pair[0][0],pair[1][0]], [pair[0][1], pair[1][1]])
     plt.savefig(save_name)
-    
-    return pair_array
+    plt.close('all')
+    return pair_array,[TP,FP,FN]
     
     
 # TODO: test    
@@ -114,7 +126,7 @@ def plotOverlayImages(ori_image, seg_image, loc_images, label_loc_images, save_n
             ax.plot(xy[0],xy[1], color = label_class_list[loc_class_], marker = '*', markersize=3)
     '''
     plt.savefig(save_name)
-        
+    plt.close('all')   
     
     
 def applyThreshold(image_predicted, thres_value):
@@ -124,22 +136,27 @@ def applyThreshold(image_predicted, thres_value):
     
 def plot_threshold_score(all_image_pairs,threshold_list = [10, 20, 30, 40, 50]):
     threshold_count_dict = {}
+    all_TP = 0
+    all_FP = 0
+    all_FN = 0
     for threshold in threshold_list:
         threshold_count_dict[threshold] = 0
     
-
-    
     for (image_label, image_predicted) in all_image_pairs:
           
-        pair_array = findNN(image_label, image_predicted)
+        pair_array, static_list = findNN(image_label, image_predicted, None)
+        all_TP += static_list[0]
+        all_FP += static_list[1]
+        all_FN += static_list[2]
         for pair in pair_array:
             for threshold in threshold_list:
                 if (np.sqrt(  (pair[0][0] - pair[1][0])**2 + (pair[0][1] - pair[1][1])**2  ) < threshold):
                     threshold_count_dict[threshold] += 1
     
     x = threshold_list
-    y = [threshold_count_dict[i] for i in threshold_count_dict.keys()]
-    print(x)
+    y = [threshold_count_dict[i]/(all_TP + 0.0) for i in threshold_count_dict.keys()]
+    print('TP, FP, FN:')
+    print(all_TP, all_FP, all_FN)
     print(y)
     
     plt.style.use('ggplot')
@@ -147,13 +164,12 @@ def plot_threshold_score(all_image_pairs,threshold_list = [10, 20, 30, 40, 50]):
     plt.title("distance threshold score")
     plt.xlabel("threshold")
     plt.ylabel("counts")
-    plt.plot(x, y,'-',label="CSL model")
+    plt.plot(x, y,'b-',label="CSL model")
     
     plt.plot(x,y,'b^-')
     plt.legend()
     plt.grid(True)
-    plt.show()
-    
+    plt.savefig('../out/score_threshold.png')
     
     
 '''

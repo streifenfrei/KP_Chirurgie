@@ -8,7 +8,7 @@ from torch.optim.lr_scheduler import *
 from dataLoader import train_val_dataset, OurDataLoader
 
 # for evaluating the local result
-from evaluate import findNN, plotOverlayImages
+from evaluate import findNN, plotOverlayImages, plot_threshold_score
 from skimage.transform import resize
 
 class CSLNet(nn.Module):
@@ -126,6 +126,7 @@ class CSLNet(nn.Module):
         loader = train_val_dataset(dataset, validation_split=0, train_batch_size=batch_size,
                                    valid_batch_size=batch_size, shuffle_dataset=True)[0]
         self.eval()
+        all_image_list = []
         i = 0
         for batch in loader:
             i += 1
@@ -144,10 +145,10 @@ class CSLNet(nn.Module):
                 imags_predict = localisation[0, loc_class_, :, :]
 
                 print(imags_label.shape, imags_predict.shape)
-                
-                findNN(imags_label, imags_predict, 'local_test' + str(i) + str(loc_class_) + '.png')
-
-    # TODO: test            
+                #findNN(imags_label, imags_predict, '../out/local_test' + str(i) +'_c' + str(loc_class_) + '.png')
+                all_image_list.append((imags_label, imags_predict))
+        plot_threshold_score(all_image_list)
+          
     def show_all_result(self, dataset, device='cpu', batch_size=1):
         loader = train_val_dataset(dataset, validation_split=0, train_batch_size=batch_size,
                                    valid_batch_size=batch_size, shuffle_dataset=True)[0]
@@ -190,6 +191,8 @@ class CSLNet(nn.Module):
         loader = train_val_dataset(dataset, validation_split=0, train_batch_size=batch_size,
                                    valid_batch_size=batch_size, shuffle_dataset=True)[0]
         self.eval()
+        import matplotlib
+        matplotlib.use('Agg')
         import matplotlib.pyplot as plt
         i = 0
         for batch in loader:
