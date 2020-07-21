@@ -10,7 +10,7 @@ import torch
 import numpy as np
 from csl.net_modules import conv3x3, DecoderBlock, conv1x1
 from dataLoader import max_gaussian_help
-from evaluate import DiceCoefficient
+from evaluate import DiceCoefficient, get_threshold_score
 
 CSL_HEAD_REGISTRY = Registry("CSL_HEAD")
 
@@ -22,6 +22,7 @@ class CSLHead(nn.Module):
     def _segmentation_loss(self, pred, target_bool):
         pred = pred.squeeze()
         target = target_bool.double()
+        loss = torch.nn.functional.binary_cross_entropy_with_logits(pred, target)
         # evaluation
         storage = get_event_storage()
         pred_bool = pred > 0.5
@@ -36,13 +37,30 @@ class CSLHead(nn.Module):
         storage.put_scalar("csl_segmentation/accuracy", mask_accuracy)
         storage.put_scalar("csl_segmentation/false_positive", false_positive)
         storage.put_scalar("csl_segmentation/false_negative", false_negative)
-        return torch.nn.functional.binary_cross_entropy_with_logits(pred, target)
+        storage.put_scalar("csl_segmentation/loss", loss.item())
+        return loss
 
     def _localisation_loss(self, pred, target):
         weights = torch.where(target > 0.0001, torch.full_like(target, 5), torch.full_like(target, 1))
         all_mse = (pred - target)**2
         weighted_mse = all_mse * weights
-        return weighted_mse.sum() / (target.size(0) * target.size(1))
+        loss = weighted_mse.sum() / (target.size(0) * target.size(1))
+        # evaluation
+        storage = get_event_storage()
+        image_pairs = []
+        for pred_single, target_single in zip(pred.split(1, 0), target.split(1, 0)):
+            for pred_class, target_class in zip(pred_single.split(1, 1), target_single.split(1, 1)):
+                pred_np = pred_class.squeeze().detach().cpu().numpy()
+                target_np = target_class.squeeze().detach().cpu().numpy()
+                image_pairs.append((target_np, pred_np))
+        threshold_score = get_threshold_score(image_pairs, self.threshold_list)
+        score = []
+        for i, score_count in enumerate(threshold_score):
+            for j in range(score_count):
+                score.append(self.threshold_list[i])
+        storage.put_histogram("csl_localisation/treshold_score", torch.tensor(score))
+        storage.put_scalar("csl_localisation/loss", loss.item())
+        return loss
 
     class _Sampling(IntEnum):
         none_relu = 0
@@ -54,6 +72,7 @@ class CSLHead(nn.Module):
         self.lambdaa = cfg.MODEL.CSL_HEAD.LAMBDA
         self.sigma = cfg.MODEL.CSL_HEAD.SIGMA
         self.epsilon = cfg.MODEL.CSL_HEAD.EVALUATION.EPSILON
+        self.threshold_list = [10, 20, 30, 40, 50]
         self.output_resolution = cfg.MODEL.CSL_HEAD.POOLER_RESOLUTION * 16
         localisation_classes = cfg.MODEL.CSL_HEAD.LOCALISATION_CLASSES
 

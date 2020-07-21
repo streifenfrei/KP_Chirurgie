@@ -7,6 +7,9 @@ from csl.net_modules import *
 from torch.optim.lr_scheduler import *
 from dataLoader import train_val_dataset, OurDataLoader
 
+# for evaluating the local result
+from evaluate import findNN, plotOverlayImages
+from skimage.transform import resize
 
 class CSLNet(nn.Module):
     _res_net_layers = [
@@ -118,6 +121,70 @@ class CSLNet(nn.Module):
             self.inplanes = old_inplanes
 
         return block
+
+    def show_loc_result(self, dataset, device='cpu', batch_size=1):
+        loader = train_val_dataset(dataset, validation_split=0, train_batch_size=batch_size,
+                                   valid_batch_size=batch_size, shuffle_dataset=True)[0]
+        self.eval()
+        i = 0
+        for batch in loader:
+            i += 1
+            inputs, target = batch
+
+            inputs = inputs.to(device)
+            segmentation, localisation = self(inputs)
+            segmentation = segmentation.cpu().detach()
+            localisation = localisation.cpu().detach()
+            localisation = localisation.numpy()
+            batch_size, seg_classes, width, height = list(segmentation.shape)
+            batch_size, loc_classes, width, height = list(localisation.shape)
+            for loc_class_ in range(loc_classes):
+                imags_label = target[0, :, :, loc_class_ + seg_classes].cpu().detach()
+                imags_label = resize(imags_label, (256, 480))
+                imags_predict = localisation[0, loc_class_, :, :]
+
+                print(imags_label.shape, imags_predict.shape)
+                
+                findNN(imags_label, imags_predict, 'local_test' + str(i) + str(loc_class_) + '.png')
+
+    # TODO: test            
+    def show_all_result(self, dataset, device='cpu', batch_size=1):
+        loader = train_val_dataset(dataset, validation_split=0, train_batch_size=batch_size,
+                                   valid_batch_size=batch_size, shuffle_dataset=True)[0]
+        self.eval()
+        i = 0
+        for batch in loader:
+            i += 1
+            inputs, target = batch
+
+            inputs = inputs.to(device)
+            segmentation, localisation = self(inputs)
+            segmentation = segmentation.cpu().detach()
+            localisation = localisation.cpu().detach()
+            localisation = localisation.numpy()
+            target = target.cpu().detach().numpy()
+
+            batch_size, seg_classes, width, height = list(segmentation.shape)
+            
+            ori_img = inputs[0].view(inputs[0].shape[0], inputs[0].shape[1], inputs[0].shape[2]).permute(1, 2, 0).cpu().detach().numpy()
+            #ori_img = resize(ori_img, (256, 480, 3))
+            #print('ori_img.shape:', ori_img.shape)
+            
+            seg_image = (nn.Sigmoid()(segmentation[0, 0, :, :].view(width, height))).numpy()
+            seg_image = resize(seg_image,(ori_img.shape[0], ori_img.shape[1]))
+            print('seg_image.shape:', seg_image.shape)
+            
+            batch_size, loc_classes, width, height = list(localisation.shape)
+            loc_images = []
+            label_loc_images = []
+            for loc_class_ in range(loc_classes):
+                loc_image = localisation[0, loc_class_, :, :]
+                label_loc_image = target[0, :, :, 1 + loc_class_]
+                loc_image = resize(loc_image, (ori_img.shape[0], ori_img.shape[1]))
+                loc_images.append(loc_image)
+                label_loc_images.append(label_loc_image)
+      
+            plotOverlayImages(ori_img, seg_image, loc_images, label_loc_images, r'../out/' + str(i) + '.png')        
 
     def visualize(self, dataset, device='cpu', batch_size=2):
         loader = train_val_dataset(dataset, validation_split=0, train_batch_size=batch_size,

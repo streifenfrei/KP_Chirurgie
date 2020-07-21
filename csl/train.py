@@ -4,7 +4,7 @@ from argparse import ArgumentParser
 import torch
 from csl.net import CSLNet, Training
 from torch.optim.lr_scheduler import *
-from dataLoader import image_transform, OurDataLoader
+from dataLoader import image_transform, image_transform_valid, OurDataLoader
 
 # model
 localisation_classes = 4
@@ -63,7 +63,7 @@ def train_model(workspace, dataset, segmentation_loss, normalize_heatmap=False, 
 def call_model(workspace, dataset, normalize_heatmap=False, batch_size=2, sigma=default_sigma, non_img_norm_flag=True):
     checkpoint = torch.load(os.path.join(workspace, 'csl.pth'), map_location=torch.device('cpu'))
     model, device = _load_model(checkpoint['model_state_dict'])
-    dataset = OurDataLoader(data_dir=dataset, task_type='both', transform=image_transform(p=1),
+    dataset = OurDataLoader(data_dir=dataset, task_type='both', transform=image_transform_valid(p=1),
                             pose_sigma=sigma,
                             normalize_heatmap=normalize_heatmap,
                             seg_type='binary',
@@ -71,8 +71,9 @@ def call_model(workspace, dataset, normalize_heatmap=False, batch_size=2, sigma=
     if device == 'cuda':
         del checkpoint
         torch.cuda.empty_cache()
-    model.visualize(dataset, device, batch_size=batch_size)
-
+    #model.visualize(dataset, device, batch_size=batch_size)
+    #model.show_loc_result(dataset, device, batch_size=batch_size)
+    model.show_all_result(dataset, device, batch_size=1)
 
 if __name__ == '__main__':
     arg_parser = ArgumentParser()
