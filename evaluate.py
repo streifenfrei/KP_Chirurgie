@@ -3,6 +3,7 @@ import scipy
 import scipy.ndimage as ndimage
 import scipy.ndimage.filters as filters
 import matplotlib.pyplot as plt
+import torch
 
 from dataLoader import image_transform, OurDataLoader, train_val_dataset
 
@@ -122,8 +123,8 @@ def compute_per_channel_dice(input, target, epsilon=1e-6, weight=None):
     # input and target shapes must match
     assert input.size() == target.size(), "'input' and 'target' must have the same shape"
 
-    input = flatten(input)
-    target = flatten(target)
+    input = torch.flatten(input)
+    target = torch.flatten(target)
     target = target.float()
 
     # compute per channel Dice Coefficient

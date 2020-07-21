@@ -3,12 +3,14 @@ from enum import IntEnum
 from detectron2.layers import ROIAlign
 from detectron2.modeling.poolers import convert_boxes_to_pooler_format
 from detectron2.structures import Boxes
+from detectron2.utils.events import get_event_storage
 from fvcore.common.registry import Registry
 from torch import nn
 import torch
 import numpy as np
 from csl.net_modules import conv3x3, DecoderBlock, conv1x1
 from dataLoader import max_gaussian_help
+from evaluate import DiceCoefficient
 
 CSL_HEAD_REGISTRY = Registry("CSL_HEAD")
 
@@ -17,14 +19,26 @@ class CSLHead(nn.Module):
     """
     Head module for generating aligned segmentation masks and localisation heatmaps, given aligned feature maps
     """
-    @staticmethod
-    def _segmentation_loss(pred, target):
+    def _segmentation_loss(self, pred, target_bool):
         pred = pred.squeeze()
-        target = target.double()
+        target = target_bool.double()
+        # evaluation
+        storage = get_event_storage()
+        pred_bool = pred > 0.5
+        storage.put_scalar("csl_segmentation/dice", DiceCoefficient(epsilon=self.epsilon)(pred_bool, target_bool))
+        mask_incorrect = pred_bool != target_bool
+        mask_accuracy = 1 - (mask_incorrect.sum().item() / max(mask_incorrect.numel(), 1.0))
+        num_positive = target_bool.sum().item()
+        false_positive = (mask_incorrect & ~target_bool).sum().item() / max(
+            target_bool.numel() - num_positive, 1.0
+        )
+        false_negative = (mask_incorrect & target_bool).sum().item() / max(num_positive, 1.0)
+        storage.put_scalar("csl_segmentation/accuracy", mask_accuracy)
+        storage.put_scalar("csl_segmentation/false_positive", false_positive)
+        storage.put_scalar("csl_segmentation/false_negative", false_negative)
         return torch.nn.functional.binary_cross_entropy_with_logits(pred, target)
 
-    @staticmethod
-    def _localisation_loss(pred, target):
+    def _localisation_loss(self, pred, target):
         weights = torch.where(target > 0.0001, torch.full_like(target, 5), torch.full_like(target, 1))
         all_mse = (pred - target)**2
         weighted_mse = all_mse * weights
@@ -39,6 +53,7 @@ class CSLHead(nn.Module):
         super().__init__()
         self.lambdaa = cfg.MODEL.CSL_HEAD.LAMBDA
         self.sigma = cfg.MODEL.CSL_HEAD.SIGMA
+        self.epsilon = cfg.MODEL.CSL_HEAD.EVALUATION.EPSILON
         self.output_resolution = cfg.MODEL.CSL_HEAD.POOLER_RESOLUTION * 16
         localisation_classes = cfg.MODEL.CSL_HEAD.LOCALISATION_CLASSES
 
@@ -169,8 +184,8 @@ class CSLHead(nn.Module):
                 gt_locs.append(self._preprocess_gt_heatmaps(instances_per_image))
             gt_masks = torch.cat(gt_masks, dim=0)
             gt_locs = torch.cat(gt_locs, dim=0)
-            return {"loss_seg": CSLHead._segmentation_loss(seg, gt_masks),
-                    "loss_loc": self.lambdaa * CSLHead._localisation_loss(loc, gt_locs)}
+            return {"loss_seg": self._segmentation_loss(seg, gt_masks),
+                    "loss_loc": self.lambdaa * self._localisation_loss(loc, gt_locs)}
         else:
             for instances_per_image, (seg, loc) in zip(instances, x):
                 instances_per_image.pred_masks = torch.sigmoid(seg)
