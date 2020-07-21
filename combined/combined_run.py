@@ -7,6 +7,7 @@ from detectron2.engine import DefaultTrainer
 from detectron2.utils.logger import setup_logger
 
 from combined.configs.config import *
+from combined.trainer import Trainer
 from maskrcnn.detectron_run import register_dataset_and_metadata, inference_on_trained_mode
 
 
@@ -20,7 +21,7 @@ def load_config(config_path: str = None):
 
 
 def start_training(cfg):
-    trainer = DefaultTrainer(cfg)
+    trainer = Trainer(cfg)
     trainer.resume_or_load(resume=False)
     trainer.train()
 

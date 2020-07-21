@@ -1,9 +1,4 @@
-import torch
-from detectron2.layers import paste_masks_in_image
 from detectron2.modeling import GeneralizedRCNN, META_ARCH_REGISTRY
-
-from detectron2.utils.memory import retry_if_cuda_oom
-
 from evaluate import non_max_suppression
 
 
@@ -21,7 +16,7 @@ class RCNNAndCSL(GeneralizedRCNN):
     @staticmethod
     def _postprocess_csl(instances):
         loc = instances.pred_loc
-        instances.pred_loc = RCNNAndCSL.heatmaps_to_keypoints(loc)
+        instances.pred_keypoints = RCNNAndCSL.heatmaps_to_keypoints(loc)
         return instances
 
     @staticmethod

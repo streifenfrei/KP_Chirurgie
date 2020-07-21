@@ -1,11 +1,14 @@
 from enum import IntEnum
 
-from detectron2.utils.registry import Registry
-import matplotlib.pyplot as plt
+from detectron2.layers import ROIAlign
+from detectron2.modeling.poolers import convert_boxes_to_pooler_format
+from detectron2.structures import Boxes
+from fvcore.common.registry import Registry
 from torch import nn
 import torch
-
+import numpy as np
 from csl.net_modules import conv3x3, DecoderBlock, conv1x1
+from dataLoader import max_gaussian_help
 
 CSL_HEAD_REGISTRY = Registry("CSL_HEAD")
 
@@ -15,7 +18,7 @@ class CSLHead(nn.Module):
     @staticmethod
     def _segmentation_loss(pred, target):
         pred = pred.squeeze()
-        target = target.type(torch.DoubleTensor)
+        target = target.double()
         return torch.nn.functional.binary_cross_entropy_with_logits(pred, target)
 
     @staticmethod
@@ -33,6 +36,8 @@ class CSLHead(nn.Module):
     def __init__(self, cfg, dropout=0.5):
         super().__init__()
         self.lambdaa = cfg.MODEL.CSL_HEAD.LAMBDA
+        self.sigma = cfg.MODEL.CSL_HEAD.SIGMA
+        self.output_resolution = cfg.MODEL.CSL_HEAD.POOLER_RESOLUTION * 16
         localisation_classes = cfg.MODEL.CSL_HEAD.LOCALISATION_CLASSES
 
         self.bottleneck_layer = self._make_layer(256, 256, sampling=self._Sampling.none_norm)
@@ -55,7 +60,7 @@ class CSLHead(nn.Module):
         self.pre_localisation_layer = self._make_layer(64, 32, sampling=self._Sampling.none_relu)
         self.localisation_layer = self._make_layer(33, localisation_classes, sampling=self._Sampling.none_relu)
 
-        return
+        self.csl_hm_align = ROIAlign((self.output_resolution, self.output_resolution), spatial_scale=1, sampling_ratio=0)
 
     def _make_layer(self, inplanes, outplanes, sampling: _Sampling = _Sampling.none_norm):
         block = None
@@ -67,45 +72,32 @@ class CSLHead(nn.Module):
             block = nn.Sequential(conv3x3(inplanes, outplanes), nn.ReLU(inplace=True))
         return block
 
-    def forward(self, x, instances):
+    def _preprocess_gt_heatmaps(self, instances):
+        heatmaps = []
+        for keypoints_per_instance, box in zip(instances.gt_keypoints.keypoints, instances.proposal_boxes):
+            heatmaps_per_instance = []
+            for keypoints_per_class in keypoints_per_instance:
+                heatmap = np.zeros((instances.image_size[1], instances.image_size[0]))
+                for x, y in keypoints_per_class:
+                    heatmap[x, y] = 1
+                heatmap = max_gaussian_help(heatmap, self.sigma, 1)
+                heatmaps_per_instance.append(torch.from_numpy(heatmap.transpose((2, 1, 0))))
+            box = convert_boxes_to_pooler_format([Boxes(box.unsqueeze(0))])
+            heatmaps_per_instance = torch.cat(heatmaps_per_instance).unsqueeze(0).float()
+            heatmaps.append(self.csl_hm_align(heatmaps_per_instance, box))
+        return torch.cat(heatmaps)
 
-        x = self._forward_per_instance(x, instances)
-        if self.training:
-            seg = torch.cat([i[0] for i in x])
-            loc = torch.cat([i[1] for i in x])
-            gt_masks = []
-            gt_locs = []
-            for instances_per_image in instances:
-                gt_masks_per_image = instances_per_image.gt_masks.crop_and_resize(
-                    instances_per_image.proposal_boxes.tensor, seg.size(2)
-                ).to(device=seg.device)
-                gt_masks.append(gt_masks_per_image)
-                #gt_locs_per_image = instances_per_image.gt_locs.crop_and_resize(
-                #    instances_per_image.proposal_boxes.tensor, loc.size(2)
-                #).to(device=loc.device)
-                #gt_locs.append(gt_locs_per_image)
-            gt_masks = torch.cat(gt_masks, dim=0)
-            #gt_locs = torch.cat(gt_locs, dim=0)
-            return {"loss_seg": CSLHead._segmentation_loss(seg, gt_masks)}
-                    #"loss_loc": self.lambdaa * CSLHead._localisation_loss(seg, gt_locs)}
-        else:
-            for instances_per_image, (seg, loc) in zip(instances, x):
-                instances_per_image.pred_masks = torch.sigmoid(seg)
-                instances_per_image.pred_loc = loc
-            return instances
-
-
-    def _forward_per_instance(self, x, instances):
+    def _forward_per_instances(self, x, instances):
         output = []
         x = [i.split(1, 0) for i in x]
         box = 0
-        for instance in instances:
+        for instances_per_image in instances:
             segs = []
             locs = []
-            for box_per_inst in range(len(instance)):
+            for _ in range(len(instances_per_image)):
                 features = [i[box] for i in x]
                 box += 1
-                seg, loc = self._forward_single_roi(features)
+                seg, loc = self._forward_single_instance(features)
                 segs.append(seg)
                 locs.append(loc)
             seg = torch.cat(segs)
@@ -113,7 +105,7 @@ class CSLHead(nn.Module):
             output.append((seg, loc))
         return output
 
-    def _forward_single_roi(self, features):
+    def _forward_single_instance(self, features):
         x, feature1, feature2, feature3 = features
 
         x = self.bottleneck_layer(x)
@@ -143,6 +135,29 @@ class CSLHead(nn.Module):
         x = torch.cat((segmentation, x), 1)
         localisation = self.localisation_layer(x)
         return segmentation, localisation
+
+    def forward(self, x, instances):
+        x = self._forward_per_instances(x, instances)
+        if self.training:
+            seg = torch.cat([i[0] for i in x])
+            loc = torch.cat([i[1] for i in x])
+            gt_masks = []
+            gt_locs = []
+            for instances_per_image in instances:
+                gt_masks_per_image = instances_per_image.gt_masks.crop_and_resize(
+                    instances_per_image.proposal_boxes.tensor, seg.size(2)
+                ).to(device=seg.device)
+                gt_masks.append(gt_masks_per_image)
+                gt_locs.append(self._preprocess_gt_heatmaps(instances_per_image))
+            gt_masks = torch.cat(gt_masks, dim=0)
+            gt_locs = torch.cat(gt_locs, dim=0)
+            return {"loss_seg": CSLHead._segmentation_loss(seg, gt_masks),
+                    "loss_loc": self.lambdaa * CSLHead._localisation_loss(loc, gt_locs)}
+        else:
+            for instances_per_image, (seg, loc) in zip(instances, x):
+                instances_per_image.pred_masks = torch.sigmoid(seg)
+                instances_per_image.pred_loc = loc
+            return instances
 
 
 def build_csl_head(cfg, dropout=0.5):

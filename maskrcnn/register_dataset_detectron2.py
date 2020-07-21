@@ -34,7 +34,8 @@ def save_img_from_base(filename: str, img_data: np.ndarray, path_to_save: str) -
     image = Image.fromarray(img_data)
     image.save(f"{path_to_save}" + filename)
 
-def flatten_list(list_of_lists:list)->List[float]:
+
+def flatten_list(list_of_lists: list) -> List[float]:
     """
     Flatten a list :[[]] -> []
     Args:
@@ -44,7 +45,6 @@ def flatten_list(list_of_lists:list)->List[float]:
 
     """
     return [val for sublist in list_of_lists for val in sublist]
-
 
 
 def create_desription_single_file(json_file: str, for_json: dict, path_to_save: str, save_image: bool = False) -> dict:
@@ -124,32 +124,29 @@ def create_desription_single_file(json_file: str, for_json: dict, path_to_save: 
                     # if there are no points we add an empty list
                     group_id = shape['group_id']
                     keypoints_dict = dict()
-                    keypoints_of_shape =  [keypoint for keypoint in data['shapes'] if keypoint['group_id'] == group_id
-                                           and keypoint['shape_type'] != 'polygon']
+                    keypoints_of_shape = [keypoint for keypoint in data['shapes'] if keypoint['group_id'] == group_id
+                                          and keypoint['shape_type'] != 'polygon']
                     # jaw_list = [keypoint['points'] for keypoint in keypoints_of_shape if keypoint['label']=='jaw']
                     jaw_list = []
+                    center_list = []
+                    shaft_list = []
+                    joint_list = []
                     for instance_keypoint in keypoints_of_shape:
-                        if instance_keypoint['label']=='center':
-                            keypoints_dict['center'] = flatten_list(instance_keypoint['points'])
-                        elif instance_keypoint['label']=='jaw':
+                        if instance_keypoint['label'] == 'center':
+                            center_list.append(flatten_list(instance_keypoint['points']))
+                        elif instance_keypoint['label'] == 'jaw':
                             jaw_list.append(flatten_list(instance_keypoint['points']))
-                        elif instance_keypoint['label']=='shaft':
-                            keypoints_dict['shaft'] = flatten_list(instance_keypoint['points'])
-                        elif instance_keypoint['label']=='joint':
-                            keypoints_dict['shaft'] = flatten_list(instance_keypoint['points'])
+                        elif instance_keypoint['label'] == 'shaft':
+                            shaft_list.append(flatten_list(instance_keypoint['points']))
+                        elif instance_keypoint['label'] == 'joint':
+                            joint_list.append(flatten_list(instance_keypoint['points']))
                     keypoints_dict['jaw'] = jaw_list
-                    if 'joint' not in keypoints_dict:
-                        keypoints_dict['joint'] = []
-                    if 'center' not in keypoints_dict:
-                        keypoints_dict['center'] = []
-                    if 'jaw' not in keypoints_dict:
-                        keypoints_dict['jaw'] = []
-                    if 'shaft' not in keypoints_dict:
-                        keypoints_dict['shaft'] = []
-
+                    keypoints_dict['joint'] = joint_list
+                    keypoints_dict['center'] = center_list
+                    keypoints_dict['shaft'] = shaft_list
 
                     shape_attr = dict()
-                    #TODO: think whether to use a list instead of dict
+                    # TODO: think whether to use a list instead of dict
                     # dict makes it mossible to identify the label based on the key
                     # -> so we are sure when we access over the key that it is this value
                     shape_attr['keypoints_csl'] = keypoints_dict

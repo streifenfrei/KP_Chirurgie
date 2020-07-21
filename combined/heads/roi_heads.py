@@ -2,7 +2,9 @@ from typing import Dict, List, Optional, Tuple, Union
 
 import torch
 from detectron2.config import configurable
+from detectron2.layers import ROIAlign
 from detectron2.modeling import ROI_HEADS_REGISTRY, StandardROIHeads
+from detectron2.modeling.poolers import ROIPooler, convert_boxes_to_pooler_format
 from detectron2.modeling.roi_heads import select_foreground_proposals
 from detectron2.structures import ImageList, Instances
 from torch import nn

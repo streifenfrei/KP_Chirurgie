@@ -12,4 +12,5 @@ def add_csl_config(cfg):
     cfg.MODEL.CSL_HEAD.POOLER_RESOLUTION = 7
     cfg.MODEL.CSL_HEAD.LOCALISATION_CLASSES = 4
     cfg.MODEL.CSL_HEAD.LAMBDA = 1.
+    cfg.MODEL.CSL_HEAD.SIGMA = 7
 

@@ -30,7 +30,7 @@ class CSLPooler(nn.Module):
         pooler_fmt_boxes = convert_boxes_to_pooler_format(box_lists)
         x.reverse()
         outputs = []
-        for output_size, x_level, pooler in zip(self.output_sizes, x, self.level_poolers):
+        for x_level, pooler in zip(x, self.level_poolers):
             output = pooler(x_level, pooler_fmt_boxes)
             outputs.append(output)
 

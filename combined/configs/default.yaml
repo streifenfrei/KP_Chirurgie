@@ -8,14 +8,13 @@ MODEL:
   ROI_HEADS:
     NUM_CLASSES: 3              # segmentation classes
   CSL_HEAD:
-    LAMBDA: 0.05                # tradeoff parameter between segmentation and localisation
-    LOCALISATION_CLASSES: 4
+    LOCALISATION_CLASSES: 4     # localisation classes (obviously)
+    LAMBDA: 0.05                # tradeoff parameter between segmentation and localisation (high: better loc, worse seg)
+    SIGMA: 7                    # standard deviation for gaussian kernel applied to ground truth heatmaps
     POOLER_RESOLUTION: 7        # resolution of the first feature map, final resolution is: x * 2^4
 DATASETS:
   TRAIN: ("instruments_train",)
   TEST: ("instruments_val",)
-DATALOADER:
-  NUM_WORKERS: 2
 SOLVER:
   STEPS: (210000, 250000)
   MAX_ITER:  5
