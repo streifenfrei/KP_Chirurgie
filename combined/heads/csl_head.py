@@ -53,12 +53,21 @@ class CSLHead(nn.Module):
                 pred_np = pred_class.squeeze().detach().cpu().numpy()
                 target_np = target_class.squeeze().detach().cpu().numpy()
                 image_pairs.append((target_np, pred_np))
-        threshold_score = get_threshold_score(image_pairs, self.threshold_list)
-        score = []
-        for i, score_count in enumerate(threshold_score):
-            for j in range(score_count):
-                score.append(self.threshold_list[i])
-        storage.put_histogram("csl_localisation/treshold_score", torch.tensor(score))
+        threshold_score, true_positive, false_positive, false_negative \
+            = get_threshold_score(image_pairs, self.threshold_list)
+        if sum(threshold_score) > 0:
+            score = []
+            for i, score_count in enumerate(threshold_score):
+                for j in range(score_count):
+                    score.append(self.threshold_list[i])
+            storage.put_histogram("csl_localisation/treshold_score", torch.tensor(score), bins=len(threshold_score))
+        epsilon = 10e-6
+        precision = true_positive / (true_positive + false_positive + epsilon)
+        recall = true_positive / (true_positive * false_negative + epsilon)
+        f1 = 2 / ((1/(recall + epsilon)) + (1/(precision + epsilon)))
+        storage.put_scalar("csl_localisation/precision", precision)
+        storage.put_scalar("csl_localisation/recall", recall)
+        storage.put_scalar("csl_localisation/f1", f1)
         storage.put_scalar("csl_localisation/loss", loss.item())
         return loss
 

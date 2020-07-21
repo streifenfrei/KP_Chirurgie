@@ -349,6 +349,7 @@ class Training:
             output_localisation = upsample(output_localisation)
             batch_size, localisation_classes, height, width = output_localisation.shape
             # segmentation
+            '''
             if self.segmentation_loss == self.SegmentationLoss.cross_entropy:
                 segmentation_loss_function = nn.BCEWithLogitsLoss(reduction='mean')
             elif self.segmentation_loss == self.SegmentationLoss.dice:
@@ -356,7 +357,7 @@ class Training:
             else:
                 raise ValueError
             segmentation_loss = segmentation_loss_function(output_segmentation, target_segmentation)
-            
+            '''
             # ==== huxi loss ====
             weights = torch.where(target_localisation > 0.0001, torch.full_like(target_localisation, 5), torch.full_like(target_localisation, 1))
 
@@ -364,15 +365,8 @@ class Training:
             weighted_mse = all_mse * weights
             localisation_loss = weighted_mse.sum()/ (
                     localisation_classes * batch_size) # or sum over whatever dimensions
-            #print(localisation_loss.shape)
-            # localization
-            #localisation_loss_function = nn.MSELoss(reduction='sum')
-            #localisation_loss = localisation_loss_function(output_localisation, target_localisation) / (
-            #        localisation_classes * batch_size)
-            #return 0 + (self.lambdah * localisation_loss), 0, localisation_loss.item()
-
-            return segmentation_loss + (
-                    self.lambdah * localisation_loss), segmentation_loss.item(), localisation_loss.item()
+                    
+            return 0 + (self.lambdah * localisation_loss), 0, localisation_loss.item()
 
     def _prepare_batch(self, batch):
         inputs, target = batch

@@ -2,7 +2,7 @@ import os
 from argparse import ArgumentParser
 
 import torch
-from csl.net import CSLNet, Training
+from csl.net_remove_seg import CSLNet, Training
 from torch.optim.lr_scheduler import *
 from dataLoader import image_transform, image_transform_valid, OurDataLoader
 
