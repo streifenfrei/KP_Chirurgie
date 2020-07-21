@@ -2,7 +2,6 @@ from detectron2.config import CfgNode as CN
 from combined.heads.roi_heads import *
 from combined.heads.csl_head import *
 from combined.heads.csl_pooler import *
-from combined.meta_arch.combined_arch import *
 
 # add new csl config parameter keys to the cfg (the values are actually irrelevant as they are overwritten by the .yaml)
 def add_csl_config(cfg):

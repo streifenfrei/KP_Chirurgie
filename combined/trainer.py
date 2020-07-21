@@ -6,7 +6,7 @@ from detectron2.data import build_detection_test_loader, build_detection_train_l
 from detectron2.data.transforms import apply_transform_gens
 from detectron2.engine import DefaultTrainer
 
-from combined.meta_arch.keypoints import CSLKeypoints
+from combined.structures.keypoints import CSLKeypoints
 import numpy as np
 
 
