@@ -14,7 +14,9 @@ CSL_HEAD_REGISTRY = Registry("CSL_HEAD")
 
 @CSL_HEAD_REGISTRY.register()
 class CSLHead(nn.Module):
-
+    """
+    Head module for generating aligned segmentation masks and localisation heatmaps, given aligned feature maps
+    """
     @staticmethod
     def _segmentation_loss(pred, target):
         pred = pred.squeeze()
@@ -40,6 +42,9 @@ class CSLHead(nn.Module):
         self.output_resolution = cfg.MODEL.CSL_HEAD.POOLER_RESOLUTION * 16
         localisation_classes = cfg.MODEL.CSL_HEAD.LOCALISATION_CLASSES
 
+        # the layers in our decoding head have only 256 input channels, due to the feature maps outputted by the FPN
+        # (the original architecture halves the channel count in every upsampling step starting with 2048,
+        # which is common in UNET architectures)
         self.bottleneck_layer = self._make_layer(256, 256, sampling=self._Sampling.none_norm)
         self.decoding_layer1_1 = self._make_layer(256, 256, sampling=self._Sampling.up)
         self.decoding_layer1_2 = self._make_layer(256, 256, sampling=self._Sampling.none_norm)
@@ -60,7 +65,8 @@ class CSLHead(nn.Module):
         self.pre_localisation_layer = self._make_layer(64, 32, sampling=self._Sampling.none_relu)
         self.localisation_layer = self._make_layer(33, localisation_classes, sampling=self._Sampling.none_relu)
 
-        self.csl_hm_align = ROIAlign((self.output_resolution, self.output_resolution), spatial_scale=1, sampling_ratio=0)
+        self.csl_hm_align = ROIAlign((self.output_resolution, self.output_resolution),
+                                     spatial_scale=1, sampling_ratio=0)
 
     def _make_layer(self, inplanes, outplanes, sampling: _Sampling = _Sampling.none_norm):
         block = None
@@ -73,6 +79,15 @@ class CSLHead(nn.Module):
         return block
 
     def _preprocess_gt_heatmaps(self, instances):
+        """
+        generates heatmaps (with gaussian kernels applied) from given csl keypoint vectors, which are then aligned to
+        the proposed boxes with a ROIAlign module
+        Args:
+            instances: Instances object containing the ground truth csl keypoints in .gt_keypoints and the ground truth
+                proposal boxes in .proposal_boxes
+        Returns:
+            Tensor: (N, L, Hm, Hw) where N is the number of instances, L the number of localisation classes.
+        """
         heatmaps = []
         for keypoints_per_instance, box in zip(instances.gt_keypoints.keypoints, instances.proposal_boxes):
             heatmaps_per_instance = []
@@ -82,6 +97,9 @@ class CSLHead(nn.Module):
                     heatmap[x, y] = 1
                 heatmap = max_gaussian_help(heatmap, self.sigma, 1)
                 heatmaps_per_instance.append(torch.from_numpy(heatmap.transpose((2, 1, 0))))
+            # we align every heatmap tensor individually due to some weird bug resulting in a mismatch of
+            # ground truth instances and its heatmaps, when doing the alignment at the end, on a
+            # stacked tensor of all heatmaps
             box = convert_boxes_to_pooler_format([Boxes(box.unsqueeze(0))])
             heatmaps_per_instance = torch.cat(heatmaps_per_instance).unsqueeze(0).float()
             heatmaps.append(self.csl_hm_align(heatmaps_per_instance, box))

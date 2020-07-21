@@ -7,7 +7,9 @@ from torch import nn
 
 
 class CSLPooler(nn.Module):
-
+    """
+    Pooler for generating aligned feature map as input for the csl head
+    """
     def __init__(
             self,
             output_size,
@@ -16,7 +18,6 @@ class CSLPooler(nn.Module):
     ):
 
         super().__init__()
-
         self.output_sizes = [output_size * (2 ** x) for x in range(4)]
 
         self.level_poolers = nn.ModuleList(

@@ -9,7 +9,7 @@ MODEL:
     NUM_CLASSES: 3              # segmentation classes
   CSL_HEAD:
     LOCALISATION_CLASSES: 4     # localisation classes (obviously)
-    LAMBDA: 0.05                # tradeoff parameter between segmentation and localisation (high: better loc, worse seg)
+    LAMBDA: 1.                # tradeoff parameter between segmentation and localisation (high: better loc, worse seg)
     SIGMA: 7                    # standard deviation for gaussian kernel applied to ground truth heatmaps
     POOLER_RESOLUTION: 7        # resolution of the first feature map, final resolution is: x * 2^4
 DATASETS:

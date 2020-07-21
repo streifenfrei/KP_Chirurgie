@@ -3,6 +3,11 @@ import torch
 
 
 class CSLKeypoints:
+    """
+    Wrapper class for csl keypoints list which allows indexing with tensors
+    like detectrons builtin structures (e.g. Keypoints, Boxes, PolygonMask...)
+    (for example needed by ROIHeads.label_and_sample_proposals(...))
+    """
     def __init__(self, keypoints):
         self.keypoints = keypoints
 

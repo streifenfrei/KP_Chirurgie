@@ -15,7 +15,10 @@ from combined.heads.csl_pooler import CSLPooler
 
 @ROI_HEADS_REGISTRY.register()
 class CSLROIHeads(StandardROIHeads):
-
+    """
+    The roi heads module consisting of the builtin box head and a csl head. The box head proposes bounding boxes used by
+    the csl head to do segmentation and localisation of keypoints
+    """
     @configurable
     def __init__(
             self,
@@ -25,6 +28,7 @@ class CSLROIHeads(StandardROIHeads):
             csl_head: nn.Module,
             **kwargs
     ):
+        # disable mask and keypoint heads of StandardROIHeads
         kwargs['mask_in_features'] = kwargs['keypoint_in_features'] = None
         super().__init__(**kwargs)
         self.csl_in_features = csl_in_features

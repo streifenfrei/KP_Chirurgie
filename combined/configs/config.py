@@ -4,7 +4,7 @@ from combined.heads.csl_head import *
 from combined.heads.csl_pooler import *
 from combined.meta_arch.combined_arch import *
 
-
+# add new csl config parameter keys to the cfg (the values are actually irrelevant as they are overwritten by the .yaml)
 def add_csl_config(cfg):
     cfg.MODEL.CSL_HEAD = CN()
     cfg.MODEL.CSL_HEAD.NAME = "CSLHead"

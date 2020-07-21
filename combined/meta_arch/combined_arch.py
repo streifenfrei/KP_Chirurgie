@@ -4,7 +4,9 @@ from evaluate import non_max_suppression
 
 @META_ARCH_REGISTRY.register()
 class RCNNAndCSL(GeneralizedRCNN):
-
+    """
+    Combined meta architecture. Adds some postprocessing for the csl output
+    """
     def inference(self, batched_inputs, detected_instances=None, do_postprocess=True):
         results = super().inference(batched_inputs, detected_instances, do_postprocess)
         if do_postprocess:
