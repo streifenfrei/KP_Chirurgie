@@ -29,6 +29,6 @@ def copy_dataset(source, destination_folder):
 
     
 if __name__ == '__main__':
-    src = '../crossval/run1'
-    dst = '../dataset_for_comb'
+    src = '/mnt/g27prist/TCO/TCO-Studenten/csl/datasets/dataset_structured/'
+    dst = '/mnt/g27prist/TCO/TCO-Studenten/csl/datasets/dataset_unstructured/train'
     copy_dataset(src, dst)

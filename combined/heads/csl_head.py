@@ -81,7 +81,7 @@ class CSLHead(nn.Module):
         self.lambdaa = cfg.MODEL.CSL_HEAD.LAMBDA
         self.sigma = cfg.MODEL.CSL_HEAD.SIGMA
         self.epsilon = cfg.MODEL.CSL_HEAD.EVALUATION.EPSILON
-        self.threshold_list = [10, 20, 30, 40, 50]
+        self.threshold_list = cfg.MODEL.CSL_HEAD.EVALUATION.THRESHOLD_SCORE_LIST
         self.output_resolution = cfg.MODEL.CSL_HEAD.POOLER_RESOLUTION * 16
         localisation_classes = cfg.MODEL.CSL_HEAD.LOCALISATION_CLASSES
 
