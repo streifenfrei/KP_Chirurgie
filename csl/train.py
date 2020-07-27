@@ -76,9 +76,26 @@ def call_model(workspace, dataset, normalize_heatmap=False, batch_size=2, sigma=
     model.show_loc_result(dataset, device, batch_size=1)
     #model.show_all_result(dataset, device, batch_size=1)
 
+def infer_model(workspace, dataset, normalize_heatmap=False, batch_size=2, sigma=default_sigma, non_img_norm_flag=True):
+    checkpoint = torch.load(os.path.join(workspace, 'csl.pth'), map_location=torch.device('cpu'))
+    model, device = _load_model(checkpoint['model_state_dict'])
+    dataset = OurDataLoader(data_dir=dataset, task_type='infer', transform=image_transform_valid(p=1),
+                            pose_sigma=sigma,
+                            normalize_heatmap=normalize_heatmap,
+                            seg_type='binary',
+                            non_image_norm_flag=non_img_norm_flag)
+    print(len(dataset))
+    if device == 'cuda':
+        del checkpoint
+        torch.cuda.empty_cache()
+
+    #model.visualize(dataset, device, batch_size=1)
+    model.show_all_result_video(dataset, device, batch_size=1)
+    #model.show_all_result(dataset, device, batch_size=1)
+
 if __name__ == '__main__':
     arg_parser = ArgumentParser()
-    arg_parser.add_argument("--command", "-c", type=str, choices=['init', 'train', 'call'], default='train')
+    arg_parser.add_argument("--command", "-c", type=str, choices=['init', 'train', 'call', 'infer'], default='train')
     arg_parser.add_argument("--workspace", "-w", type=str, default='.')
     arg_parser.add_argument("--dataset", "-d", type=str, default='../dataset')
     arg_parser.add_argument("--segloss", "-sl", type=str, choices=['ce', 'dice'], default='ce')
@@ -105,3 +122,7 @@ if __name__ == '__main__':
                     normalize_heatmap=args.normalize, batch_size=args.batch, lambdah=args.lambdah, sigma=args.sigma, non_img_norm_flag=args.non_img_norm_flag, learning_rate=args.learningrate)
     elif args.command == 'call':
         call_model(args.workspace, args.dataset, normalize_heatmap=args.normalize, batch_size=args.batch, sigma=args.sigma, non_img_norm_flag=args.non_img_norm_flag)
+    elif args.command == 'infer':
+        infer_model(args.workspace, args.dataset, normalize_heatmap=args.normalize, batch_size=args.batch, sigma=args.sigma, non_img_norm_flag=args.non_img_norm_flag)
+
+

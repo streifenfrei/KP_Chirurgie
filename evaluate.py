@@ -90,7 +90,7 @@ def findNN(image_label, image_predicted, save_name):
 # https://note.nkmk.me/en/python-opencv-numpy-alpha-blend-mask/   
 
  
-def plotOverlayImages(ori_image, seg_image, loc_images, label_loc_images, save_name):
+def plotOverlayImages(ori_image, seg_image, loc_images, save_name):
     ori_image = np.float32(ori_image) * 255
     seg_image = np.float32(seg_image) * 255
     seg_image_3_channel = cv2.cvtColor(seg_image, cv2.COLOR_GRAY2BGR)
@@ -101,31 +101,25 @@ def plotOverlayImages(ori_image, seg_image, loc_images, label_loc_images, save_n
     mask = cv2.inRange(seg_image_3_channel, lower, upper)
     seg_image_3_channel[mask != 0] = [50, 50, 0]
     #print('seg_image_3_channel: ',seg_image_3_channel.shape)
-    seg_overlap = cv2.addWeighted(ori_image, 0.6, seg_image_3_channel, 0.4, 30)
+    seg_overlap = cv2.addWeighted(ori_image, 0.8, seg_image_3_channel, 0.2, 30)
     
     cv2.imwrite(r"../out/segmented_weighted.jpg", seg_overlap) # for seg
     # https://www.cnblogs.com/darkknightzh/p/6117528.html color reference
-    loc_class_list = ['firebrick', 'salmon', 'sandybrown', 'linen']
+    loc_class_list = ['firebrick', 'midnightblue', 'sandybrown', 'linen']
     label_class_list = ['lightsteelblue', 'royalblue', 'blue', 'midnightblue']
     loc_classes = len(loc_images)
     img = plt.imread(r"../out/segmented_weighted.jpg")
     #img = cv2.cvtColor(seg_overlap, cv2.COLOR_BGR2RGB)
-    fig, ax = plt.subplots()
+    fig, ax = plt.subplots(figsize=(15,15))
     ax.imshow(img)
     for loc_class_ in range(loc_classes):
         image_predicted = loc_images[loc_class_]
         image_predicted = applyThreshold(image_predicted, 0.4)
         xy_predict = non_max_suppression(np.float32(image_predicted))  
         for xy in xy_predict:
-            ax.plot(xy[0],xy[1], color = loc_class_list[loc_class_], marker = '.', markersize=3)
-    '''
-    for loc_class_ in range(loc_classes):
-        label_loc_image = label_loc_images[loc_class_]
-        label_loc_image = non_max_suppression(np.float32(label_loc_image))
-        for xy in label_loc_image:
-            ax.plot(xy[0],xy[1], color = label_class_list[loc_class_], marker = '*', markersize=3)
-    '''
-    plt.savefig(save_name)
+            ax.plot(xy[0],xy[1], color = loc_class_list[loc_class_], marker = '.', markersize=7)
+    plt.axis('off')
+    plt.savefig(save_name, bbox_inches='tight')
     plt.close('all')   
     
     

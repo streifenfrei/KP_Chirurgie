@@ -60,6 +60,7 @@ class OurDataLoader(Dataset):
             3. mode: 'train' or 'test' (return label or not)
             4. task_type: 'pose' or 'segmentation' or 'both' (return which type of label)
         '''
+        self.all_img_name_list = find_all_img(data_dir)
         self.all_json_name_list = find_all_json(data_dir)  # json file name list
         self.transform = transform
         self.mode = mode
@@ -75,43 +76,47 @@ class OurDataLoader(Dataset):
         '''
         return size of dataset
         '''
+        if self.task_type == 'infer':
+            return len(self.all_img_name_list)
+
         return len(self.all_json_name_list)
 
     def __getitem__(self, idx):
         '''
         get next image (w/o label)
         '''
-        data_name = self.all_json_name_list[idx]
+        if self.task_type == 'infer':
+            img_name = self.all_img_name_list[idx]
+            with open(img_name, "rb") as f:
+                b = io.BytesIO(f.read())
+                img_pil = PIL.Image.open(b)
+                img = np.array(img_pil)
+            data = {"image": img}
+            augmented = self.transform(**data)
+            
+            img = augmented["image"]
+            return img_to_tensor(img), str(img_name)
 
+        data_name = self.all_json_name_list[idx]
         image, shapes = load_image(data_name)
         if self.task_type == 'segmentation':  # not binary but 4 channels: 4 instruments
             mask = load_mask(image.shape, shapes, self.class_name_to_id, self.seg_type)
-
             data = {"image": image, "mask": mask}
             augmented = self.transform(**data)
             image, mask = augmented["image"], augmented["mask"]
-            if self.mode == 'train':
-                return img_to_tensor(image), torch.from_numpy(mask).long()
-            else:
-                return img_to_tensor(image), str(img_file_name)
-                
-                
+            return img_to_tensor(image), torch.from_numpy(mask).long()
+     
         elif self.task_type == 'pose':
             mask = load_pose(image.shape, shapes, self.landmark_name_to_id, self.pose_sigma, self.normalize_heatmap)
             data = {"image": image, "mask": mask}
             # TODO: test if works or not with pose information
             augmented = self.transform(**data)
             image, pose = augmented["image"], augmented["mask"]
+            return img_to_tensor(image), torch.from_numpy(pose).float()
 
-            if self.mode == 'train':
-                return img_to_tensor(image), torch.from_numpy(pose).float()
-            else:
-                return img_to_tensor(image), str(img_file_name)
-                
         # TODO: how to deal with this part?
         elif self.task_type == 'both':
             mask = load_both(image.shape, shapes, self.class_name_to_id, self.landmark_name_to_id, self.pose_sigma, self.normalize_heatmap, self.seg_type)
-            #print(image.shape)
             #print(mask.shape)
             data = {"image": image, "mask": mask}
             augmented = self.transform(**data)
@@ -122,20 +127,13 @@ class OurDataLoader(Dataset):
                 print("I'm normalize the image!")
                 tf = image_norm()
                 image = tf(image)
+                return image, torch.from_numpy(both_labels).float()
 
-                if self.mode == 'train':
-                    return image, torch.from_numpy(both_labels).float()
-                    #return img_to_tensor(image), torch.from_numpy(both_labels).float()
-                else:
-                    return image, str(img_file_name)
-                    #return img_to_tensor(image), str(img_file_name)
             else:
                 #print('img norm? :',self.non_image_norm_flag)
-                if self.mode == 'train':
-                    return img_to_tensor(image), torch.from_numpy(both_labels).float()
-                else:
-                    return img_to_tensor(image), str(img_file_name)
-            
+                return img_to_tensor(image), torch.from_numpy(both_labels).float()
+
+
 
 
 def find_all_json(json_dir):
@@ -144,6 +142,13 @@ def find_all_json(json_dir):
     '''
     all_json_names = glob.glob(json_dir+'/**/*.json', recursive=True)
     return all_json_names
+
+def find_all_img(img_dir):
+    '''
+    find all the data in data dir
+    '''
+    all_img_names = glob.glob(img_dir+'/**/*.png', recursive=True)
+    return all_img_names
 
 # 
 def image_transform(p=1):
@@ -414,7 +419,6 @@ def train_val_dataset(dataset_list, validation_split = 0.2, train_batch_size = 1
         random_seed= 42
         # Creating data indices for training and validation splits:
         dataset_size = len(dataset)
-
         indices = list(range(dataset_size))
         split = int(np.floor(validation_split * dataset_size))
         if shuffle_dataset :
