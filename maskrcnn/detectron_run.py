@@ -453,8 +453,7 @@ def inference_on_trained_mode(instruments_metadata,
                        instance_mode=ColorMode.IMAGE_BW  # remove the colors of unsegmented pixels
                        )
         out = v.draw_instance_predictions(outputs["instances"].to("cpu"))
-        cv2.imshow('image', out.get_image()[:, :, ::-1])
-        cv2.waitKey(0)
+        cv2.imwrite('yay.png', out.get_image()[:, :, ::-1])
 
 
 def main():

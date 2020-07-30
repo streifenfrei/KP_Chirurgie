@@ -41,6 +41,7 @@ class CSLHead(nn.Module):
         return loss
 
     def _localisation_loss(self, pred, target):
+        target = target.to(pred.device)
         weights = torch.where(target > 0.0001, torch.full_like(target, 5), torch.full_like(target, 1))
         all_mse = (pred - target)**2
         weighted_mse = all_mse * weights
@@ -143,7 +144,7 @@ class CSLHead(nn.Module):
             # we align every heatmap tensor individually due to some weird bug resulting in a mismatch of
             # ground truth instances and its heatmaps, when doing the alignment at the end, on a
             # stacked tensor of all heatmaps
-            box = convert_boxes_to_pooler_format([Boxes(box.unsqueeze(0))])
+            box = convert_boxes_to_pooler_format([Boxes(box.unsqueeze(0))]).cpu()
             heatmaps_per_instance = torch.cat(heatmaps_per_instance).unsqueeze(0).float()
             heatmaps.append(self.csl_hm_align(heatmaps_per_instance, box))
         return torch.cat(heatmaps)
