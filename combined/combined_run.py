@@ -26,7 +26,7 @@ def load_config(config_path: str = None):
 
 def start_training(cfg):
     trainer = Trainer(cfg)
-    trainer.resume_or_load(resume=True)
+    trainer.resume_or_load(resume=False)
     trainer.train()
 
 
@@ -46,8 +46,7 @@ def inference_on_trained_model(instruments_metadata,
                           instance_mode=ColorMode.IMAGE_BW  # remove the colors of unsegmented pixels
                           )
         out = v.draw_instance_predictions(outputs["instances"].to("cpu"))
-        cv2.imshow('image', out.get_image()[:, :, ::-1])
-        cv2.waitKey(0)
+        cv2.imwrite('yay.png', out.get_image()[:, :, ::-1])
 
 
 def main():
@@ -61,8 +60,8 @@ def main():
     classes_list = ['scissors', 'needle_holder', 'grasper']
     instruments_metadata = register_dataset_and_metadata(args.dataset, classes_list)
     # inference_old_model()
-    #start_training(cfg)
-    inference_on_trained_model(instruments_metadata, args.dataset, cfg=cfg)
+    start_training(cfg)
+    #inference_on_trained_model(instruments_metadata, args.dataset, cfg=cfg)
 
 
 if __name__ == "__main__":

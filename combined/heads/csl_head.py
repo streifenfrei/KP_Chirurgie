@@ -1,5 +1,3 @@
-from enum import IntEnum
-
 from detectron2.layers import ROIAlign
 from detectron2.modeling.poolers import convert_boxes_to_pooler_format
 from detectron2.structures import Boxes
@@ -8,10 +6,10 @@ from fvcore.common.registry import Registry
 from torch import nn
 import torch
 import numpy as np
-from csl.net_modules import conv3x3, DecoderBlock, conv1x1
+
+from combined.heads.csl_decoder import Decoder
 from dataLoader import max_gaussian_help
 from evaluate import DiceCoefficient, get_threshold_score
-
 CSL_HEAD_REGISTRY = Registry("CSL_HEAD")
 
 @CSL_HEAD_REGISTRY.register()
@@ -72,57 +70,31 @@ class CSLHead(nn.Module):
         storage.put_scalar("csl_localisation/loss", loss.item())
         return loss
 
-    class _Sampling(IntEnum):
-        none_relu = 0
-        none_norm = 1
-        up = 2
-
-    def __init__(self, cfg, dropout=0.5):
+    def __init__(self, cfg):
         super().__init__()
         self.lambdaa = cfg.MODEL.CSL_HEAD.LAMBDA
         self.sigma = cfg.MODEL.CSL_HEAD.SIGMA
         self.epsilon = cfg.MODEL.CSL_HEAD.EVALUATION.EPSILON
         self.threshold_list = cfg.MODEL.CSL_HEAD.EVALUATION.THRESHOLD_SCORE_LIST
-        self.output_resolution = cfg.MODEL.CSL_HEAD.POOLER_RESOLUTION * 16
+        device = cfg.MODEL.DEVICE
+        output_resolution = cfg.MODEL.CSL_HEAD.POOLER_RESOLUTION * 16
+        segmentation_classes = cfg.MODEL.ROI_HEADS.NUM_CLASSES
         localisation_classes = cfg.MODEL.CSL_HEAD.LOCALISATION_CLASSES
-
-        # the layers in our decoding head have only 256 input channels, due to the feature maps outputted by the FPN
-        # (the original architecture halves the channel count in every upsampling step starting with 2048,
-        # which is common in UNET architectures)
-        self.bottleneck_layer = self._make_layer(256, 256, sampling=self._Sampling.none_norm)
-        self.decoding_layer1_1 = self._make_layer(256, 256, sampling=self._Sampling.up)
-        self.decoding_layer1_2 = self._make_layer(256, 256, sampling=self._Sampling.none_norm)
-        self.dropout_de1 = nn.Dropout(p=dropout)
-
-        self.decoding_layer2_1 = self._make_layer(256, 256, sampling=self._Sampling.up)
-        self.decoding_layer2_2 = self._make_layer(256, 256, sampling=self._Sampling.none_norm)
-        self.dropout_de2 = nn.Dropout(p=dropout)
-
-        self.decoding_layer3_1 = self._make_layer(256, 128, sampling=self._Sampling.up)
-        self.decoding_layer3_2 = self._make_layer(256, 128, sampling=self._Sampling.none_norm)
-        self.dropout_de3 = nn.Dropout(p=dropout)
-
-        self.decoding_layer4 = self._make_layer(128, 64, sampling=self._Sampling.up)
-        self.dropout_de4 = nn.Dropout(p=dropout)
-
-        self.segmentation_layer = conv3x3(64, 1)
-        self.pre_localisation_layer = self._make_layer(64, 32, sampling=self._Sampling.none_relu)
-        self.localisation_layer = self._make_layer(33, localisation_classes, sampling=self._Sampling.none_relu)
-
-        self.csl_hm_align = ROIAlign((self.output_resolution, self.output_resolution),
+        self.csl_hm_align = ROIAlign((output_resolution, output_resolution),
                                      spatial_scale=1, sampling_ratio=0)
+        self.decoder = [Decoder(localisation_classes).to(device) for i in range(segmentation_classes)]
 
-    def _make_layer(self, inplanes, outplanes, sampling: _Sampling = _Sampling.none_norm):
-        block = None
-        if sampling == self._Sampling.up:
-            block = DecoderBlock(inplanes, outplanes)
-        elif sampling == self._Sampling.none_norm:
-            block = nn.Sequential(conv1x1(inplanes, outplanes), nn.BatchNorm2d(outplanes))
-        elif sampling == self._Sampling.none_relu:
-            block = nn.Sequential(conv3x3(inplanes, outplanes), nn.ReLU(inplace=True))
-        return block
+    def train(self, mode=True):
+        super().train(mode)
+        for decoder in self.decoder:
+            decoder.train(mode)
 
-    def _preprocess_gt_heatmaps(self, instances):
+    def eval(self):
+        super().eval()
+        for decoder in self.decoder:
+            decoder.eval()
+
+    def _preprocess_gt_heatmaps(self, instances, calculated_heatmaps):
         """
         generates heatmaps (with gaussian kernels applied) from given csl keypoint vectors, which are then aligned to
         the proposed boxes with a ROIAlign module
@@ -136,18 +108,27 @@ class CSLHead(nn.Module):
         for keypoints_per_instance, box in zip(instances.gt_keypoints.keypoints, instances.proposal_boxes):
             heatmaps_per_instance = []
             for keypoints_per_class in keypoints_per_instance:
-                heatmap = np.zeros((instances.image_size[1], instances.image_size[0]))
-                for x, y in keypoints_per_class:
-                    heatmap[x, y] = 1
-                heatmap = max_gaussian_help(heatmap, self.sigma, 1)
+                kstring = str(keypoints_per_class)
+                if kstring in calculated_heatmaps:
+                    heatmap = calculated_heatmaps[kstring]
+                else:
+                    heatmap = np.zeros((instances.image_size[1], instances.image_size[0]))
+                    if keypoints_per_class:
+                        for x, y in keypoints_per_class:
+                            heatmap[x, y] = 1
+                        heatmap = max_gaussian_help(heatmap, self.sigma, 1)
+                        calculated_heatmaps[kstring] = heatmap
+                    else:
+                        heatmap = np.expand_dims(heatmap, axis=2)
                 heatmaps_per_instance.append(torch.from_numpy(heatmap.transpose((2, 1, 0))))
             # we align every heatmap tensor individually due to some weird bug resulting in a mismatch of
             # ground truth instances and its heatmaps, when doing the alignment at the end, on a
             # stacked tensor of all heatmaps
             box = convert_boxes_to_pooler_format([Boxes(box.unsqueeze(0))]).cpu()
             heatmaps_per_instance = torch.cat(heatmaps_per_instance).unsqueeze(0).float()
+
             heatmaps.append(self.csl_hm_align(heatmaps_per_instance, box))
-        return torch.cat(heatmaps)
+        return torch.cat(heatmaps), calculated_heatmaps
 
     def _forward_per_instances(self, x, instances):
         output = []
@@ -156,10 +137,12 @@ class CSLHead(nn.Module):
         for instances_per_image in instances:
             segs = []
             locs = []
-            for _ in range(len(instances_per_image)):
+            classes = instances_per_image.gt_classes.tolist() if self.training \
+                else instances_per_image.pred_classes.tolist()
+            for cls in classes:
                 features = [i[box] for i in x]
                 box += 1
-                seg, loc = self._forward_single_instance(features)
+                seg, loc = self.decoder[cls](features)
                 segs.append(seg)
                 locs.append(loc)
             seg = torch.cat(segs)
@@ -168,35 +151,7 @@ class CSLHead(nn.Module):
         return output
 
     def _forward_single_instance(self, features):
-        x, feature1, feature2, feature3 = features
-
-        x = self.bottleneck_layer(x)
-
-        x = self.decoding_layer1_1(x)
-        dec1_2 = self.decoding_layer1_2(feature1)
-        x = x.add(dec1_2)
-        x = self.dropout_de1(x)
-
-        x = self.decoding_layer2_1(x)
-        dec2_2 = self.decoding_layer2_2(feature2)
-        x = x.add(dec2_2)
-        x = self.dropout_de2(x)
-
-        x = self.decoding_layer3_1(x)
-        dec3_2 = self.decoding_layer3_2(feature3)
-        x = x.add(dec3_2)
-        x = self.dropout_de3(x)
-
-        x = self.decoding_layer4(x)
-        x = self.dropout_de4(x)
-
-        # csl part
-        segmentation = self.segmentation_layer(x)
-
-        x = self.pre_localisation_layer(x)
-        x = torch.cat((segmentation, x), 1)
-        localisation = self.localisation_layer(x)
-        return segmentation, localisation
+        pass
 
     def forward(self, x, instances):
         x = self._forward_per_instances(x, instances)
@@ -205,12 +160,15 @@ class CSLHead(nn.Module):
             loc = torch.cat([i[1] for i in x])
             gt_masks = []
             gt_locs = []
+            calculated_heatmaps = {}
             for instances_per_image in instances:
                 gt_masks_per_image = instances_per_image.gt_masks.crop_and_resize(
                     instances_per_image.proposal_boxes.tensor, seg.size(2)
                 ).to(device=seg.device)
                 gt_masks.append(gt_masks_per_image)
-                gt_locs.append(self._preprocess_gt_heatmaps(instances_per_image))
+                current_heatmaps, calculated_heatmaps = self._preprocess_gt_heatmaps(instances_per_image,
+                                                                                     calculated_heatmaps)
+                gt_locs.append(current_heatmaps)
             gt_masks = torch.cat(gt_masks, dim=0)
             gt_locs = torch.cat(gt_locs, dim=0)
             return {"loss_seg": self._segmentation_loss(seg, gt_masks),
@@ -222,6 +180,6 @@ class CSLHead(nn.Module):
             return instances
 
 
-def build_csl_head(cfg, dropout=0.5):
+def build_csl_head(cfg):
     name = cfg.MODEL.CSL_HEAD.NAME
-    return CSL_HEAD_REGISTRY.get(name)(cfg, dropout=dropout)
+    return CSL_HEAD_REGISTRY.get(name)(cfg)

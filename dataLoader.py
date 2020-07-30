@@ -309,7 +309,7 @@ def max_gaussian_help(cls, pose_sigma, landmark_id):
     seg_image_temp = np.zeros_like(seg_image, dtype = float)
     for every_point in non_zero_coords:
         seg_image_zeros = np.zeros_like(seg_image_temp, dtype = float)
-        seg_image_zeros[every_point[0], every_point[1],0] = 1.0 
+        seg_image_zeros[every_point[0], every_point[1],0] = 1.0
         seg_image_zeros = gaussian_filter(seg_image_zeros, sigma = pose_sigma)
         seg_image = np.dstack((seg_image,seg_image_zeros))
         

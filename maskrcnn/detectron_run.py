@@ -431,8 +431,8 @@ class Trainer(DefaultTrainer):
 
 def start_training(cfg):
 
-    # trainer = DefaultTrainer(cfg)
-    trainer = Trainer(cfg)
+    trainer = DefaultTrainer(cfg)
+    #trainer = Trainer(cfg)
     trainer.resume_or_load(resume=True)
     trainer.train()
 
