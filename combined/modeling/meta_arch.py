@@ -3,18 +3,12 @@ from detectron2.layers import paste_masks_in_image
 from detectron2.modeling import GeneralizedRCNN, META_ARCH_REGISTRY
 from detectron2.utils.memory import retry_if_cuda_oom
 
-from evaluate import non_max_suppression
-
 
 @META_ARCH_REGISTRY.register()
 class RCNNAndCSL(GeneralizedRCNN):
     """
     Combined meta architecture. Adds some postprocessing for the csl output
     """
-
-    def preprocess_image(self, batched_inputs):
-        self.images = super().preprocess_image(batched_inputs)
-        return self.images
 
     def inference(self, batched_inputs, detected_instances=None, do_postprocess=True):
         results = super().inference(batched_inputs, detected_instances, do_postprocess)
