@@ -82,7 +82,7 @@ class CSLHead(nn.Module):
         localisation_classes = cfg.MODEL.CSL_HEAD.LOCALISATION_CLASSES
         self.csl_hm_align = ROIAlign((output_resolution, output_resolution),
                                      spatial_scale=1, sampling_ratio=0)
-        self.decoder = [Decoder(localisation_classes).to(device) for i in range(segmentation_classes)]
+        self.decoder = nn.ModuleList([Decoder(localisation_classes).to(device) for i in range(segmentation_classes)])
 
     def train(self, mode=True):
         super().train(mode)
