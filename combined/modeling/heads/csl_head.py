@@ -7,7 +7,7 @@ from torch import nn
 import torch
 import numpy as np
 
-from combined.heads.csl_decoder import Decoder
+from combined.modeling.heads.csl_decoder import Decoder
 from dataLoader import max_gaussian_help
 from evaluate import DiceCoefficient, get_threshold_score
 CSL_HEAD_REGISTRY = Registry("CSL_HEAD")

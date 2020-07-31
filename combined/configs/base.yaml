@@ -1,5 +1,5 @@
 MODEL:
-  META_ARCHITECTURE: "GeneralizedRCNN"
+  META_ARCHITECTURE: "RCNNAndCSL"
   BACKBONE:
     NAME: "build_resnet_fpn_backbone"
   RESNETS:

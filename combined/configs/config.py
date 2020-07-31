@@ -1,7 +1,8 @@
 from detectron2.config import CfgNode as CN
-from combined.heads.roi_heads import *
-from combined.heads.csl_head import *
-from combined.heads.csl_pooler import *
+from combined.modeling.heads.roi_heads import *
+from combined.modeling.heads.csl_head import *
+from combined.modeling.heads.csl_pooler import *
+from combined.modeling.meta_arch import *
 
 
 # add new csl config parameter keys to the cfg (the values are actually irrelevant as they are overwritten by the .yaml)

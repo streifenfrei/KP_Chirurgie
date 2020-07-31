@@ -9,8 +9,8 @@ from detectron2.modeling.roi_heads import select_foreground_proposals
 from detectron2.structures import ImageList, Instances
 from torch import nn
 
-from combined.heads.csl_head import build_csl_head
-from combined.heads.csl_pooler import CSLPooler
+from combined.modeling.heads.csl_head import build_csl_head
+from combined.modeling.heads.csl_pooler import CSLPooler
 
 
 @ROI_HEADS_REGISTRY.register()

@@ -2,7 +2,7 @@ _BASE_: "base.yaml"
 OUTPUT_DIR: "../out/combined"
 MODEL:
   DEVICE: "cuda"
-  #WEIGHTS: "../out/combined/model_final.pth"
+  WEIGHTS: "../out/combined/model_final.pth"
   ROI_HEADS:
     NUM_CLASSES: 3              # segmentation classes
   CSL_HEAD:
