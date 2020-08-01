@@ -189,7 +189,7 @@ class CSLNet(nn.Module):
 
     def show_all_result_video(self, dataset, device='cpu', batch_size=1):
         loader = train_val_dataset(dataset, validation_split=0, train_batch_size=batch_size,
-                                   valid_batch_size=batch_size, shuffle_dataset=True)[0]
+                                   valid_batch_size=batch_size, shuffle_dataset=False)[0]
         self.eval()
         i = 0
         for batch in loader:
@@ -218,7 +218,7 @@ class CSLNet(nn.Module):
                 loc_image = resize(loc_image, (ori_img.shape[0], ori_img.shape[1]))
                 loc_images.append(loc_image)
       
-            plotOverlayImages(ori_img, seg_image, loc_images , r'../out/' + str(i) + '.png')        
+            plotOverlayImages(ori_img, seg_image, loc_images , r'../out/' + img_name[0].split('/')[-1])        
 
 
     def visualize(self, dataset, device='cpu', batch_size=2):

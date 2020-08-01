@@ -4,7 +4,7 @@ import scipy.ndimage as ndimage
 import scipy.ndimage.filters as filters
 import matplotlib.pyplot as plt
 import cv2
-from dataLoader import image_transform, OurDataLoader, train_val_dataset
+from dataLoader import image_transform, OurDataLoader, train_val_dataset, landmark_id_to_name_
     
 
 #https://stackoverflow.com/questions/9111711/get-coordinates-of-local-maxima-in-2d-array-above-certain-value
@@ -101,7 +101,7 @@ def plotOverlayImages(ori_image, seg_image, loc_images, save_name):
     mask = cv2.inRange(seg_image_3_channel, lower, upper)
     seg_image_3_channel[mask != 0] = [50, 50, 0]
     #print('seg_image_3_channel: ',seg_image_3_channel.shape)
-    seg_overlap = cv2.addWeighted(ori_image, 0.8, seg_image_3_channel, 0.2, 30)
+    seg_overlap = cv2.addWeighted(ori_image, 0.7, seg_image_3_channel, 0.3, 70)
     
     cv2.imwrite(r"../out/segmented_weighted.jpg", seg_overlap) # for seg
     # https://www.cnblogs.com/darkknightzh/p/6117528.html color reference
@@ -117,7 +117,12 @@ def plotOverlayImages(ori_image, seg_image, loc_images, save_name):
         image_predicted = applyThreshold(image_predicted, 0.4)
         xy_predict = non_max_suppression(np.float32(image_predicted))  
         for xy in xy_predict:
-            ax.plot(xy[0],xy[1], color = loc_class_list[loc_class_], marker = '.', markersize=7)
+            ax.plot(xy[0],xy[1], color = loc_class_list[loc_class_], marker = '.', markersize=7, label=landmark_id_to_name_[loc_class_ + 1])
+
+    handles, labels = plt.gca().get_legend_handles_labels()
+    by_label = dict(zip(labels, handles))
+    plt.legend(by_label.values(), by_label.keys(), title="landmark type")
+    #ax.legend()
     plt.axis('off')
     plt.savefig(save_name, bbox_inches='tight')
     plt.close('all')   

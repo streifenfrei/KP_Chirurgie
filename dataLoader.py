@@ -50,6 +50,14 @@ landmark_name_to_id_ = {
 'shaft':4
 }
 
+landmark_id_to_name_ = {
+1:'jaw',
+2:'center',
+3:'joint',
+4:'shaft'
+}
+
+
 class OurDataLoader(Dataset):
     def __init__(self, data_dir, transform=None, mode='train', task_type='both', class_name_to_id = class_name_to_id_, landmark_name_to_id = landmark_name_to_id_, pose_sigma = 7, normalize_heatmap = True, seg_type = 'binary', non_image_norm_flag = True): 
         '''

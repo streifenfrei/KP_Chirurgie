@@ -103,7 +103,7 @@ if __name__ == '__main__':
     arg_parser.add_argument("--batch", "-b", type=int, default=2)
     arg_parser.add_argument("--lambdah", "-l", type=float, default=default_lambdah)
     arg_parser.add_argument("--sigma", "-s", type=int, default=default_sigma)
-    arg_parser.add_argument("--non_img_norm_flag", "-in", action='store_false', default=True)
+    arg_parser.add_argument("--non_img_norm_flag", "-nin", action='store_false', default=True)
     arg_parser.add_argument("--learningrate", "-lr", type=float, default=default_learning_rate)
 
     args = arg_parser.parse_args()
