@@ -4,15 +4,17 @@ import scipy.ndimage as ndimage
 import scipy.ndimage.filters as filters
 import matplotlib.pyplot as plt
 import cv2
-from dataLoader import image_transform, OurDataLoader, train_val_dataset, landmark_id_to_name_
+import torch
+from torch import flatten
+
+from dataLoader import image_transform, OurDataLoader, train_val_dataset, landmark_name_to_id_
     
 
 #https://stackoverflow.com/questions/9111711/get-coordinates-of-local-maxima-in-2d-array-above-certain-value
 def non_max_suppression(img_landmark):
     neighborhood_size = 7
     threshold = 0.4
-    print(np.amax(img_landmark))
-    data = np.array(img_landmark* 256, dtype=int) 
+    data = np.array(img_landmark* 256, dtype=int)
 
     data_max = filters.maximum_filter(data, neighborhood_size)
 
@@ -117,7 +119,7 @@ def plotOverlayImages(ori_image, seg_image, loc_images, save_name):
         image_predicted = applyThreshold(image_predicted, 0.4)
         xy_predict = non_max_suppression(np.float32(image_predicted))  
         for xy in xy_predict:
-            ax.plot(xy[0],xy[1], color = loc_class_list[loc_class_], marker = '.', markersize=7, label=landmark_id_to_name_[loc_class_ + 1])
+            ax.plot(xy[0],xy[1], color = loc_class_list[loc_class_], marker = '.', markersize=7, label=landmark_name_to_id_[loc_class_ + 1])
 
     handles, labels = plt.gca().get_legend_handles_labels()
     by_label = dict(zip(labels, handles))
@@ -131,41 +133,23 @@ def plotOverlayImages(ori_image, seg_image, loc_images, save_name):
 def applyThreshold(image_predicted, thres_value):
     image_predicted_thresholded = (image_predicted > thres_value) * image_predicted
     return image_predicted_thresholded
-    
-    
-def plot_threshold_score(all_image_pairs,threshold_list = [10, 20, 30, 40, 50]):
-    threshold_count_dict = {}
-    all_TP = 0
-    all_FP = 0
-    all_FN = 0
-    for threshold in threshold_list:
-        threshold_count_dict[threshold] = 0
-    
-    for (image_label, image_predicted) in all_image_pairs:
-          
-        pair_array, static_list = findNN(image_label, image_predicted, None)
-        all_TP += static_list[0]
-        all_FP += static_list[1]
-        all_FN += static_list[2]
-        for pair in pair_array:
-            for threshold in threshold_list:
-                if (np.sqrt(  (pair[0][0] - pair[1][0])**2 + (pair[0][1] - pair[1][1])**2  ) < threshold):
-                    threshold_count_dict[threshold] += 1
-    
+
+
+def plot_threshold_score(all_image_pairs, threshold_list=[10, 20, 30, 40, 50]):
+    y, all_TP, all_FP, all_FN = get_threshold_score(all_image_pairs, threshold_list=threshold_list)
     x = threshold_list
-    y = [threshold_count_dict[i]/(all_TP + 0.0) for i in threshold_count_dict.keys()]
     print('TP, FP, FN:')
     print(all_TP, all_FP, all_FN)
     print(y)
-    
+
     plt.style.use('ggplot')
-    plt.figure(figsize=(10,5))
+    plt.figure(figsize=(10, 5))
     plt.title("distance threshold score")
     plt.xlabel("threshold")
     plt.ylabel("counts")
-    plt.plot(x, y,'b-',label="CSL model")
-    
-    plt.plot(x,y,'b^-')
+    plt.plot(x, y, 'b-', label="CSL model")
+
+    plt.plot(x, y, 'b^-')
     plt.legend()
     plt.grid(True)
     plt.savefig('../out/score_threshold.png')
@@ -216,8 +200,29 @@ class DiceCoefficient:
     def __call__(self, input, target):
         # Average across channels in order to get the final score
         return torch.mean(compute_per_channel_dice(input, target, epsilon=self.epsilon))
-    
-    
+
+
+def get_threshold_score(all_image_pairs, threshold_list=[10, 20, 30, 40, 50]):
+    threshold_count_dict = {}
+    all_TP = 0
+    all_FP = 0
+    all_FN = 0
+    for threshold in threshold_list:
+        threshold_count_dict[threshold] = 0
+
+    for (image_label, image_predicted) in all_image_pairs:
+
+        pair_array, static_list = findNN(image_label, image_predicted, None)
+        all_TP += static_list[0]
+        all_FP += static_list[1]
+        all_FN += static_list[2]
+        for pair in pair_array:
+            for threshold in threshold_list:
+                if (np.sqrt((pair[0][0] - pair[1][0]) ** 2 + (pair[0][1] - pair[1][1]) ** 2) < threshold):
+                    threshold_count_dict[threshold] += 1
+
+    return [threshold_count_dict[i] for i in threshold_count_dict.keys()], all_TP, all_FP, all_FN
+
 if __name__ == '__main__':
     dataset = OurDataLoader(data_dir=r'dataset', task_type = 'both', transform=image_transform(p=1), pose_sigma = 5, normalize_heatmap = True)
     train_loader, validation_loader = train_val_dataset(dataset, validation_split = 0.0, train_batch_size = 3, valid_batch_size = 2, shuffle_dataset = True)

@@ -1,20 +1,16 @@
-from detectron2.utils.visualizer import Visualizer
-
+from detectron2.utils.colormap import random_color
+from detectron2.utils.visualizer import Visualizer, _create_text_labels, GenericMask, ColorMode, \
+    _SMALL_OBJECT_AREA_THRESH
+import numpy as np
 
 # for visualising the local result, by huxi
+from networkx.drawing.tests.test_pylab import mpl
+
 from evaluate import applyThreshold, non_max_suppression
 
 
 class CSLVisualizer(Visualizer):
     def draw_instance_predictions(self, predictions):
-        super().draw_instance_predictions(predictions)
-        # TODO add keypoints to visualisation
-        # -> predictions is an Instances object containing the heatmaps in the shape (N, 4, H, W)
-        # (N = found instances, H = height of image, W = width of image)
-        # it is found in the .pred_loc field -> predictions.pred_loc
-        # -> self.output is a VisImage object containing the input image and the overlays of the masks etc...
-        # there the heatmaps / keypoints have to be added somehow
-        # (the super method might be helpful too see how the other stuff was added)
 
         boxes = predictions.pred_boxes if predictions.has("pred_boxes") else None
         scores = predictions.scores if predictions.has("scores") else None
