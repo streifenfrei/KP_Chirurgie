@@ -67,7 +67,6 @@ def findNN(image_label, image_predicted, save_name):
         FP = len(xy_predict)
 
     pair_array = np.array(pair_list)
-    print(pair_array)
 
     if save_name == None:
         return pair_array,[TP,FP,FN]
