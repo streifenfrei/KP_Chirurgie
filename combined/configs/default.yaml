@@ -1,0 +1,25 @@
+_BASE_: "base.yaml"
+OUTPUT_DIR: "../out/combined"
+MODEL:
+  DEVICE: "cuda"
+  WEIGHTS: "../out/combined/model_final.pth"
+  ROI_HEADS:
+    NUM_CLASSES: 3              # segmentation classes
+  CSL_HEAD:
+    LOCALISATION_CLASSES: 4     # localisation classes (obviously)
+    LAMBDA: 0.05                # tradeoff parameter between segmentation and localisation (high: better loc, worse seg)
+    SIGMA: 7                    # standard deviation for gaussian kernel applied to ground truth heatmaps
+    POOLER_RESOLUTION: 7        # resolution of the first feature map, final resolution is: x * 16
+    HM_PREPROCESSING: "direct"  # type of gt heatmap preprocessing: ["align", "direct"]
+    EVALUATION:
+      EPSILON: 1e-6             # epsilon for the dice coefficient (segmentation)
+      THRESHOLD_SCORE_LIST: [5, 10, 15, 20, 25, 30, 35, 40, 45, 50]     # thresholds to calculate the threshold scores with (localisation)
+DATASETS:
+  TRAIN: ("instruments_train",)
+  TEST: ("instruments_val",)
+SOLVER:
+  STEPS: (210000, 250000)
+  MAX_ITER:  400000
+  BASE_LR: 0.00025
+  IMS_PER_BATCH: 1
+
