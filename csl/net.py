@@ -359,8 +359,8 @@ class Training:
             
             # ==== huxi loss ====
             weights = torch.where(target_localisation > 0.0001, torch.full_like(target_localisation, 5), torch.full_like(target_localisation, 1))
-
             all_mse = (output_localisation - target_localisation)**2
+
             weighted_mse = all_mse * weights
             localisation_loss = weighted_mse.sum()/ (
                     localisation_classes * batch_size) # or sum over whatever dimensions
@@ -378,6 +378,7 @@ class Training:
         inputs, target = batch
         target = target.permute(0, 3, 1, 2)
         target_segmentation, target_localisation = torch.split(target, [1, self.model.localisation_classes], dim=1)
+        print(torch.max(target_localisation))
         return inputs, (target_segmentation, target_localisation)
 
     def _get_loss(self, batch):

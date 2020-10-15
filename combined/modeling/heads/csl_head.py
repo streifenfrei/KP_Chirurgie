@@ -1,5 +1,3 @@
-from math import floor
-
 from detectron2.layers import ROIAlign
 from detectron2.modeling.poolers import convert_boxes_to_pooler_format
 from detectron2.structures import Boxes
@@ -41,12 +39,41 @@ class CSLHead(nn.Module):
         return loss
 
     def _localisation_loss(self, pred, target):
+
         target = target.to(pred.device)
-        weights = torch.where(target > 0.0001, torch.full_like(target, 5), torch.full_like(target, 1))
+        weights = torch.where(target > 0.0001, torch.full_like(target, self.loc_weight), torch.full_like(target, 1))
         all_mse = (pred - target)**2
         weighted_mse = all_mse * weights
         loss = weighted_mse.sum() / (target.size(0) * target.size(1))
-        # evaluation
+
+        # fancy debugging visualisation
+        #import matplotlib
+        #matplotlib.use("TkAgg")
+        #import matplotlib.pyplot as plt
+        #for mask, locs, weigh, all, wmse in zip(pred.split(1,0), target.split(1,0), weights.split(1,0), all_mse.split(1,0), weighted_mse.split(1,0)):
+        #    fig = plt.figure(figsize=(12, 6))
+        #    index = 1
+        #    for loc1, loc2, loc3, loc4, loc5 in zip(locs.split(1, 1), mask.split(1,1), weigh.split(1,1), all.split(1,1), wmse.split(1,1)):
+        #        fig.add_subplot(5,4,index)
+        #        print(torch.max(loc1).item())
+        #        plt.imshow(loc1.squeeze().detach())
+        #        fig.add_subplot(5, 4, index+4)
+        #        print(torch.max(loc2).item())
+        #        plt.imshow(loc2.squeeze().detach())
+        #        fig.add_subplot(5, 4, index + 8)
+        #        print(torch.max(loc3).item())
+        #        plt.imshow(loc3.squeeze().detach())
+        #        fig.add_subplot(5, 4, index + 12)
+        #        print(torch.max(loc4).item())
+        #        plt.imshow(loc4.squeeze().detach())
+        #        fig.add_subplot(5, 4, index + 16)
+        #        print(torch.max(loc5).item())
+        #        print("\n")
+        #        plt.imshow(loc5.squeeze().detach())
+        #        index += 1
+        #    plt.show()
+
+        #evaluation
         storage = get_event_storage()
         image_pairs = []
         for pred_single, target_single in zip(pred.split(1, 0), target.split(1, 0)):
@@ -78,6 +105,7 @@ class CSLHead(nn.Module):
         self.lambdaa = cfg.MODEL.CSL_HEAD.LAMBDA
         self.sigma = cfg.MODEL.CSL_HEAD.SIGMA
         self.epsilon = cfg.MODEL.CSL_HEAD.EVALUATION.EPSILON
+        self.loc_weight = cfg.MODEL.CSL_HEAD.LOC_WEIGHT
         self.threshold_list = cfg.MODEL.CSL_HEAD.EVALUATION.THRESHOLD_SCORE_LIST
         self.device = cfg.MODEL.DEVICE
         self.output_resolution = cfg.MODEL.CSL_HEAD.POOLER_RESOLUTION * 16
@@ -105,12 +133,13 @@ class CSLHead(nn.Module):
                         for x, y in keypoints_per_class:
                             heatmap[x, y] = 1
                         heatmap = max_gaussian_help(heatmap, self.sigma, 1)
+                        heatmap = heatmap * 2 * np.pi * (self.sigma ** 2)  # normalize
                         calculated_heatmaps[kstring] = heatmap
                     else:
                         heatmap = np.expand_dims(heatmap, axis=2)
                 heatmaps_per_instance.append(torch.from_numpy(heatmap.transpose((2, 1, 0))))
             # we align every heatmap tensor individually due to some weird bug resulting in a mismatch of
-            # ground truth instances and its heatmaps, when doing the alignment at the end, on a
+            # ground truth instances and its heatmaps when doing the alignment at the end, on a
             # stacked tensor of all heatmaps
             box = convert_boxes_to_pooler_format([Boxes(box.unsqueeze(0))]).cpu()
             heatmaps_per_instance = torch.cat(heatmaps_per_instance).unsqueeze(0).float()
@@ -137,6 +166,7 @@ class CSLHead(nn.Module):
                         heatmap[keypoint[0], keypoint[1]] = 1
 
                 heatmap = max_gaussian_help(heatmap, self.sigma, 1)
+                heatmap = heatmap * 2 * np.pi * (self.sigma ** 2)  # normalize
                 heatmap = heatmap[self.hm_direct_padding:padded_size-self.hm_direct_padding,
                                   self.hm_direct_padding:padded_size-self.hm_direct_padding]
                 heatmaps_per_instance.append(torch.from_numpy(heatmap).squeeze())
@@ -201,6 +231,8 @@ class CSLHead(nn.Module):
                 gt_locs.append(current_heatmaps)
             gt_masks = torch.cat(gt_masks, dim=0)
             gt_locs = torch.cat(gt_locs, dim=0)
+
+
             return {"loss_seg": self._segmentation_loss(seg, gt_masks),
                     "loss_loc": self.lambdaa * self._localisation_loss(loc, gt_locs)}
         else:
