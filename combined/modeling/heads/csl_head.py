@@ -41,32 +41,31 @@ class CSLHead(nn.Module):
     def _localisation_loss(self, pred, target):
 
         target = target.to(pred.device)
-        weights = torch.where(target > 0.0001, torch.full_like(target, self.loc_weight), torch.full_like(target, 1))
+        weights = torch.where(target > 0.1, torch.full_like(target, self.loc_weight), torch.full_like(target, 1))
         all_mse = (pred - target)**2
         weighted_mse = all_mse * weights
-        loss = weighted_mse.sum() / (target.size(0) * target.size(1))
-
+        loss = weighted_mse.sum() / (target.shape[0] * target.shape[1])
         # fancy debugging visualisation
         #import matplotlib
         #matplotlib.use("TkAgg")
         #import matplotlib.pyplot as plt
-        #for mask, locs, weigh, all, wmse in zip(pred.split(1,0), target.split(1,0), weights.split(1,0), all_mse.split(1,0), weighted_mse.split(1,0)):
-        #    fig = plt.figure(figsize=(12, 6))
+        #for mask, locs, weigh, all, wmse, mask2 in zip(pred.split(1,0), target.split(1,0), weights.split(1,0), all_mse.split(1,0), weighted_mse.split(1,0)):
+        #    fig = plt.figure(figsize=(24, 12))
         #    index = 1
         #    for loc1, loc2, loc3, loc4, loc5 in zip(locs.split(1, 1), mask.split(1,1), weigh.split(1,1), all.split(1,1), wmse.split(1,1)):
-        #        fig.add_subplot(5,4,index)
+        #        fig.add_subplot(6,4,index+4)
         #        print(torch.max(loc1).item())
         #        plt.imshow(loc1.squeeze().detach())
-        #        fig.add_subplot(5, 4, index+4)
+        #        fig.add_subplot(6, 4, index+8)
         #        print(torch.max(loc2).item())
         #        plt.imshow(loc2.squeeze().detach())
-        #        fig.add_subplot(5, 4, index + 8)
+        #        fig.add_subplot(6, 4, index + 12)
         #        print(torch.max(loc3).item())
         #        plt.imshow(loc3.squeeze().detach())
-        #        fig.add_subplot(5, 4, index + 12)
+        #        fig.add_subplot(6, 4, index + 16)
         #        print(torch.max(loc4).item())
         #        plt.imshow(loc4.squeeze().detach())
-        #        fig.add_subplot(5, 4, index + 16)
+        #        fig.add_subplot(6, 4, index + 20)
         #        print(torch.max(loc5).item())
         #        print("\n")
         #        plt.imshow(loc5.squeeze().detach())
@@ -83,12 +82,14 @@ class CSLHead(nn.Module):
                 image_pairs.append((target_np, pred_np))
         threshold_score, true_positive, false_positive, false_negative \
             = get_threshold_score(image_pairs, self.threshold_list)
+        """
         if sum(threshold_score) > 0:
             score = []
             for i, score_count in enumerate(threshold_score):
                 for j in range(score_count):
                     score.append(self.threshold_list[i])
             storage.put_histogram("csl_localisation/treshold_score", torch.tensor(score), bins=len(threshold_score))
+        """ 
         epsilon = 10e-6
         precision = float(true_positive) / (true_positive + false_positive + epsilon)
         recall = float(true_positive) / (true_positive * false_negative + epsilon)
@@ -212,9 +213,6 @@ class CSLHead(nn.Module):
             output.append((seg, loc))
         return output
 
-    def _forward_single_instance(self, features):
-        pass
-
     def forward(self, x, instances):
         x = self._forward_per_instances(x, instances)
         if self.training:
@@ -231,7 +229,6 @@ class CSLHead(nn.Module):
                 gt_locs.append(current_heatmaps)
             gt_masks = torch.cat(gt_masks, dim=0)
             gt_locs = torch.cat(gt_locs, dim=0)
-
 
             return {"loss_seg": self._segmentation_loss(seg, gt_masks),
                     "loss_loc": self.lambdaa * self._localisation_loss(loc, gt_locs)}

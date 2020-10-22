@@ -45,7 +45,7 @@ class Decoder(nn.Module):
         elif sampling == self._Sampling.none_norm:
             block = nn.Sequential(conv1x1(inplanes, outplanes), nn.BatchNorm2d(outplanes))
         elif sampling == self._Sampling.none_relu:
-            block = nn.Sequential(conv3x3(inplanes, outplanes), nn.ReLU(inplace=True))
+            block = nn.Sequential(conv3x3(inplanes, outplanes), nn.LeakyReLU(inplace=True))
         return block
 
     def forward(self, features):
@@ -73,7 +73,6 @@ class Decoder(nn.Module):
 
         # csl part
         segmentation = self.segmentation_layer(x)
-
         x = self.pre_localisation_layer(x)
         x = torch.cat((segmentation, x), 1)
         localisation = self.localisation_layer(x)

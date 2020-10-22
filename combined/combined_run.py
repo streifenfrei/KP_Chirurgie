@@ -26,7 +26,7 @@ def load_config(config_path: str = None):
 
 def start_training(cfg):
     trainer = Trainer(cfg)
-    trainer.resume_or_load(resume=False)
+    trainer.resume_or_load(resume=True)
     trainer.train()
 
 
