@@ -41,34 +41,23 @@ class CSLHead(nn.Module):
     def _localisation_loss(self, pred, target):
 
         target = target.to(pred.device)
-        weights = torch.where(target > 0.1, torch.full_like(target, self.loc_weight), torch.full_like(target, 1))
-        all_mse = (pred - target)**2
-        weighted_mse = all_mse * weights
-        loss = weighted_mse.sum() / (target.shape[0] * target.shape[1])
+        target = torch.where(target > 0.001, torch.full_like(target, 1), torch.full_like(target, 0))
+        weights = torch.where(target > 0.001, torch.full_like(target, self.loc_weight), torch.full_like(target, 1))
+        loss = torch.nn.functional.binary_cross_entropy_with_logits(pred, target, weight=weights)
         # fancy debugging visualisation
         #import matplotlib
         #matplotlib.use("TkAgg")
         #import matplotlib.pyplot as plt
-        #for mask, locs, weigh, all, wmse, mask2 in zip(pred.split(1,0), target.split(1,0), weights.split(1,0), all_mse.split(1,0), weighted_mse.split(1,0)):
-        #    fig = plt.figure(figsize=(24, 12))
+        #for mask, locs in zip(pred.split(1,0), target.split(1,0)):
+        #    fig = plt.figure(figsize=(12, 6))
         #    index = 1
-        #    for loc1, loc2, loc3, loc4, loc5 in zip(locs.split(1, 1), mask.split(1,1), weigh.split(1,1), all.split(1,1), wmse.split(1,1)):
-        #        fig.add_subplot(6,4,index+4)
+        #    for loc1, loc2 in zip(locs.split(1, 1), mask.split(1,1)):
+        #        fig.add_subplot(2,4,index)
         #        print(torch.max(loc1).item())
         #        plt.imshow(loc1.squeeze().detach())
-        #        fig.add_subplot(6, 4, index+8)
+        #        fig.add_subplot(2, 4, index+4)
         #        print(torch.max(loc2).item())
         #        plt.imshow(loc2.squeeze().detach())
-        #        fig.add_subplot(6, 4, index + 12)
-        #        print(torch.max(loc3).item())
-        #        plt.imshow(loc3.squeeze().detach())
-        #        fig.add_subplot(6, 4, index + 16)
-        #        print(torch.max(loc4).item())
-        #        plt.imshow(loc4.squeeze().detach())
-        #        fig.add_subplot(6, 4, index + 20)
-        #        print(torch.max(loc5).item())
-        #        print("\n")
-        #        plt.imshow(loc5.squeeze().detach())
         #        index += 1
         #    plt.show()
 

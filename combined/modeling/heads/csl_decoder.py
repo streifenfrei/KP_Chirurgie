@@ -36,7 +36,7 @@ class Decoder(nn.Module):
 
         self.segmentation_layer = conv3x3(64, 1)
         self.pre_localisation_layer = self._make_layer(64, 32, sampling=self._Sampling.none_relu)
-        self.localisation_layer = self._make_layer(33, localisation_classes, sampling=self._Sampling.none_relu)
+        self.localisation_layer = conv3x3(33, localisation_classes)
 
     def _make_layer(self, inplanes, outplanes, sampling: _Sampling = _Sampling.none_norm):
         block = None
