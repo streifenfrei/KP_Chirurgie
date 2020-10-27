@@ -11,6 +11,16 @@ class CSLVisualizer(Visualizer):
     def draw_instance_predictions(self, predictions):
         super().draw_instance_predictions(predictions)
 
+        # fancy debugging visualisation
+        #import matplotlib
+        #matplotlib.use("TkAgg")
+        #import torch
+        #import matplotlib.pyplot as plt
+        #fig = plt.figure(figsize=(12, 3))
+        #for index, hm in enumerate(torch.sum(predictions.pred_loc, dim=0).split(1,0)):
+        #    fig.add_subplot(2,4,index+1)
+        #    plt.imshow(hm.squeeze().detach())
+        #plt.show()
         # === huxi's code: for visualisation of csl keypoint === #
         loc_class_list = ['firebrick', 'midnightblue', 'sandybrown', 'linen']
         my_heatmap_tensor = predictions.pred_loc.cpu().detach().numpy()
