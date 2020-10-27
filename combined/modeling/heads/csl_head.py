@@ -224,7 +224,7 @@ class CSLHead(nn.Module):
         else:
             for instances_per_image, (seg, loc) in zip(instances, x):
                 instances_per_image.pred_masks = torch.sigmoid(seg)
-                instances_per_image.pred_loc = loc
+                instances_per_image.pred_loc = torch.sigmoid(loc)
             return instances
 
 
