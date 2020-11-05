@@ -4,7 +4,6 @@ from argparse import ArgumentParser
 
 import cv2
 from detectron2.config import get_cfg
-# import some common detectron2 utilities
 from detectron2.engine import DefaultPredictor
 from detectron2.utils.logger import setup_logger
 from detectron2.utils.visualizer import ColorMode
@@ -12,7 +11,7 @@ from detectron2.utils.visualizer import ColorMode
 from combined.configs.config import *
 from combined.trainer import Trainer
 from combined.visualizer import CSLVisualizer
-from maskrcnn.detectron_run import register_dataset_and_metadata, get_balloon_dicts
+from detectron2_commons.commons import register_dataset_and_metadata, get_instrument_dicts
 
 
 def load_config(config_path: str = None):
@@ -30,41 +29,35 @@ def start_training(cfg):
     trainer.train()
 
 
-def inference_on_trained_model(instruments_metadata,
+def inference_on_trained_model(metadata,
                                path_to_data,
                                cfg) -> None:
     cfg.MODEL.DEVICE = 'cuda' if torch.cuda.is_available() else 'cpu'
     predictor = DefaultPredictor(cfg)
 
-    dataset_dicts = get_balloon_dicts(f"{path_to_data}/val")
+    dataset_dicts = get_instrument_dicts(f"{path_to_data}/val")
     for d in random.sample(dataset_dicts, 1):
         im = cv2.imread(d["file_name"])
         outputs = predictor(im)
         v = CSLVisualizer(im[:, :, ::-1],
-                          metadata=instruments_metadata,
+                          metadata=metadata,
                           scale=0.8,
                           instance_mode=ColorMode.IMAGE_BW  # remove the colors of unsegmented pixels
                           )
         out = v.draw_instance_predictions(outputs["instances"].to("cpu"))
-        cv2.imwrite('yay.png', out.get_image()[:, :, ::-1])
+        cv2.imwrite(os.path.join(cfg.OUTPUT_DIR, 'yay.png'), out.get_image()[:, :, ::-1])
 
 
-def main():
+if __name__ == "__main__":
     arg_parser = ArgumentParser()
-    arg_parser.add_argument("--config", "-c", type=str, default='configs/pretrained.yaml')
+    arg_parser.add_argument("--config", "-c", type=str, default='configs/default.yaml')
     arg_parser.add_argument("--dataset", "-d", type=str, default='../dataset')
     arg_parser.add_argument("--train", "-t", action="store_true")
     args = arg_parser.parse_args()
     cfg = load_config(config_path=args.config)
-    # saving all logs
     setup_logger(os.path.join(cfg.OUTPUT_DIR, 'saved_logs.log'))
-    classes_list = ['scissors', 'needle_holder', 'grasper']
-    instruments_metadata = register_dataset_and_metadata(args.dataset, classes_list)
+    metadata = register_dataset_and_metadata(args.dataset, cfg.VISUALIZER.CLASS_NAMES)
     if args.train:
         start_training(cfg)
     else:
-        inference_on_trained_model(instruments_metadata, args.dataset, cfg=cfg)
-
-
-if __name__ == "__main__":
-    main()
+        inference_on_trained_model(metadata, args.dataset, cfg=cfg)

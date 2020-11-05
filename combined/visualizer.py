@@ -1,10 +1,5 @@
-from detectron2.utils.visualizer import Visualizer, GenericMask
-import numpy as np
-
-# for visualising the local result, by huxi
+from detectron2.utils.visualizer import Visualizer
 from networkx.drawing.tests.test_pylab import mpl
-
-from evaluate import applyThreshold, non_max_suppression
 
 
 class CSLVisualizer(Visualizer):

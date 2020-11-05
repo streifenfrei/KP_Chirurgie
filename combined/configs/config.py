@@ -19,4 +19,6 @@ def add_csl_config(cfg):
     cfg.MODEL.CSL_HEAD.EVALUATION = CN()
     cfg.MODEL.CSL_HEAD.EVALUATION.EPSILON = 1e-6
     cfg.MODEL.CSL_HEAD.EVALUATION.THRESHOLD_SCORE_LIST = [10, 20, 30, 40, 50]
+    cfg.VISUALIZER = CN()
+    cfg.VISUALIZER.CLASS_NAMES = ['scissors', 'needle_holder', 'grasper']
 
