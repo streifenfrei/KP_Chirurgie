@@ -1,6 +1,5 @@
 from enum import IntEnum
 
-from detectron2.layers import ROIAlign
 from torch import nn
 import torch
 
@@ -15,7 +14,7 @@ class Decoder(nn.Module):
 
     def __init__(self, localisation_classes, dropout=0.5):
         super().__init__()
-        # the layers in our decoding head have only 256 input channels, due to the feature maps outputted by the FPN
+        # the layers in our decoding head have only 256 input channels, due to the feature maps output by the FPN
         # (the original architecture halves the channel count in every upsampling step starting with 2048,
         # which is common in UNET architectures)
         self.bottleneck_layer = self._make_layer(256, 256, sampling=self._Sampling.none_norm)

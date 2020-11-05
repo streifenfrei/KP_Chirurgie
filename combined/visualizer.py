@@ -10,19 +10,11 @@ from evaluate import applyThreshold, non_max_suppression
 class CSLVisualizer(Visualizer):
     def draw_instance_predictions(self, predictions):
         super().draw_instance_predictions(predictions)
-        # === huxi's code: for visualisation of csl keypoint === #
         loc_class_list = ['firebrick', 'midnightblue', 'sandybrown', 'linen']
-        my_heatmap_tensor = predictions.pred_loc.cpu().detach().numpy()
-        if my_heatmap_tensor is not None:
-            for i in range(my_heatmap_tensor.shape[0]):
-                for j in range(my_heatmap_tensor.shape[1]):
-                    heatmap = my_heatmap_tensor[i, j, :, :]
-                    self.draw_binary_mask(heatmap)
-                    #heatmap_thres = applyThreshold(heatmap, 1)
-                    #xy_predict = non_max_suppression(np.float32(heatmap_thres))
-                    #for xy in xy_predict:
-                    #    self.output.ax.add_patch(mpl.patches.Circle(xy, radius=5, fill=True, color=loc_class_list[j]))
-
-        # === huxi's code: for visualisation of csl keypoint end === #
+        print(predictions.pred_loc)
+        for keypoints_per_instance in predictions.pred_loc:
+            for i, keypoints_per_class in enumerate(keypoints_per_instance):
+                for xy in keypoints_per_class:
+                    self.output.ax.add_patch(mpl.patches.Circle(xy, radius=5, fill=True, color=loc_class_list[i]))
         return self.output
 

@@ -1,7 +1,7 @@
-import torch
-from detectron2.layers import paste_masks_in_image
+import numpy as np
 from detectron2.modeling import GeneralizedRCNN, META_ARCH_REGISTRY
-from detectron2.utils.memory import retry_if_cuda_oom
+
+from evaluate import applyThreshold, non_max_suppression
 
 
 @META_ARCH_REGISTRY.register()
@@ -19,32 +19,29 @@ class RCNNAndCSL(GeneralizedRCNN):
 
     @staticmethod
     def _postprocess_csl(results):
-
         for results_per_image in results:
             instances_per_image = results_per_image["instances"]
-
-            # scale heatmaps
-            heatmaps = []
-            for heatmap_per_class in instances_per_image.pred_loc.split(1, dim=1):
-                heatmap_per_class = retry_if_cuda_oom(paste_masks_in_image)(
-                    heatmap_per_class[:, 0, :, :],  # N, 1, M, M
-                    instances_per_image.pred_boxes,
-                    instances_per_image.image_size,
-                    threshold=0.999,
-                )
-                heatmaps.append(heatmap_per_class)
-            instances_per_image.pred_loc = torch.stack(heatmaps, dim=1)
-
-            # fancy debugging visualisation
-            #import matplotlib
-            #matplotlib.use("TkAgg")
-            #import matplotlib.pyplot as plt
-            #fig = plt.figure(figsize=(12, 3))
-            #for index, hm in enumerate(torch.sum(instances_per_image.pred_loc.cpu(), dim=0).to(torch.bool).split(1, 0)):
-            #    print(torch.max(hm))
-            #    fig.add_subplot(2, 4, index + 1)
-            #    plt.imshow(hm.squeeze().detach())
-            #plt.show()
-
+            keypoints = []
+            for heatmaps_per_instance, box in zip(instances_per_image.pred_loc.split(1, dim=0),
+                                                  instances_per_image.pred_boxes):
+                x1_box, y1_box, x2_box, y2_box = box.detach().cpu().numpy()
+                width_box, height_box = x2_box - x1_box, y2_box - y1_box
+                keypoints_per_instance = []
+                for heatmap in heatmaps_per_instance.split(1, dim=1):
+                    heatmap = heatmap[0, 0, :, :].detach().cpu().numpy()
+                    width, height = heatmap.shape
+                    # apply threshold to filter noise
+                    heatmap_thres = applyThreshold(heatmap, 0.8)
+                    # extract keypoints using non maximum suppression (in fixed size coordinate system)
+                    xy_predict = non_max_suppression(np.float32(heatmap_thres))
+                    keypoints_per_class = []
+                    for x_hm, y_hm in xy_predict:
+                        # fit keypoints to the image's coordinate system
+                        x_norm, y_norm = x_hm / width, y_hm / height
+                        x, y = int(np.round(x1_box + (x_norm * width_box))), int(np.round(y1_box + (y_norm * height_box)))
+                        keypoints_per_class.append((x, y))
+                    keypoints_per_instance.append(keypoints_per_class)
+                keypoints.append(keypoints_per_instance)
+            instances_per_image.pred_loc = keypoints
             results_per_image["instances"] = instances_per_image
         return results

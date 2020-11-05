@@ -2,7 +2,7 @@ import copy
 
 import torch
 from detectron2.config import CfgNode
-from detectron2.data import build_detection_test_loader, build_detection_train_loader, DatasetMapper
+from detectron2.data import build_detection_test_loader, build_detection_train_loader
 from detectron2.data import detection_utils as utils
 from detectron2.data.transforms import apply_transform_gens, ResizeShortestEdge
 from detectron2.engine import DefaultTrainer
