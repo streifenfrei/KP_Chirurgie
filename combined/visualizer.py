@@ -13,15 +13,16 @@ class CSLVisualizer(Visualizer):
         # === huxi's code: for visualisation of csl keypoint === #
         loc_class_list = ['firebrick', 'midnightblue', 'sandybrown', 'linen']
         my_heatmap_tensor = predictions.pred_loc.cpu().detach().numpy()
+        import torch
+        print(torch.max(predictions.pred_loc))
         if my_heatmap_tensor is not None:
             for i in range(my_heatmap_tensor.shape[0]):
                 for j in range(my_heatmap_tensor.shape[1]):
                     heatmap = my_heatmap_tensor[i, j, :, :]
-                    self.draw_binary_mask(heatmap)
-                    #heatmap_thres = applyThreshold(heatmap, 1)
-                    #xy_predict = non_max_suppression(np.float32(heatmap_thres))
-                    #for xy in xy_predict:
-                    #    self.output.ax.add_patch(mpl.patches.Circle(xy, radius=5, fill=True, color=loc_class_list[j]))
+                    heatmap_thres = applyThreshold(heatmap, 0.8)
+                    xy_predict = non_max_suppression(np.float32(heatmap_thres))
+                    for xy in xy_predict:
+                        self.output.ax.add_patch(mpl.patches.Circle(xy, radius=5, fill=True, color=loc_class_list[j]))
 
         # === huxi's code: for visualisation of csl keypoint end === #
         return self.output

@@ -39,11 +39,11 @@ class CSLHead(nn.Module):
         return loss
 
     def _localisation_loss(self, pred, target):
-
         target = target.to(pred.device)
-        target = torch.where(target > 0.001, torch.full_like(target, 1), torch.full_like(target, 0))
-        weights = torch.where(target > 0.001, torch.full_like(target, self.loc_weight), torch.full_like(target, 1))
-        loss = torch.nn.functional.binary_cross_entropy_with_logits(pred, target, weight=weights)
+        weights = torch.where(target > 0.1, torch.full_like(target, self.loc_weight), torch.full_like(target, 1))
+        all_mse = (pred - target) ** 2
+        weighted_mse = all_mse * weights
+        loss = weighted_mse.sum() / (target.shape[0] * target.shape[1])
         # fancy debugging visualisation
         #import matplotlib
         #matplotlib.use("TkAgg")
