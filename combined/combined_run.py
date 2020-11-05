@@ -53,15 +53,17 @@ def main():
     arg_parser = ArgumentParser()
     arg_parser.add_argument("--config", "-c", type=str, default='configs/pretrained.yaml')
     arg_parser.add_argument("--dataset", "-d", type=str, default='../dataset')
+    arg_parser.add_argument("--train", "-t", action="store_true")
     args = arg_parser.parse_args()
     cfg = load_config(config_path=args.config)
     # saving all logs
     setup_logger(os.path.join(cfg.OUTPUT_DIR, 'saved_logs.log'))
     classes_list = ['scissors', 'needle_holder', 'grasper']
     instruments_metadata = register_dataset_and_metadata(args.dataset, classes_list)
-    # inference_old_model()
-    start_training(cfg)
-    #inference_on_trained_model(instruments_metadata, args.dataset, cfg=cfg)
+    if args.train:
+        start_training(cfg)
+    else:
+        inference_on_trained_model(instruments_metadata, args.dataset, cfg=cfg)
 
 
 if __name__ == "__main__":
