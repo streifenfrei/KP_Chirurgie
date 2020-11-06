@@ -25,16 +25,19 @@ class RCNNAndCSL(GeneralizedRCNN):
             pixel_std: Tuple[float],
             input_format: Optional[str] = None,
             vis_period: int = 0,
+            hm_threshold: float = 0.8,
             keypoint_limits: List[int] = None
     ):
         super().__init__(backbone=backbone, proposal_generator=proposal_generator, roi_heads=roi_heads,
                          pixel_mean=pixel_mean, pixel_std=pixel_std, input_format=input_format, vis_period=vis_period)
+        self.hm_threshold = hm_threshold
         self.keypoint_limits = keypoint_limits
 
     @classmethod
     def from_config(cls, cfg):
         dic = super().from_config(cfg)
-        dic["keypoint_limits"] = cfg.MODEL.KEYPOINT_LIMITS
+        dic["hm_threshold"] = cfg.MODEL.POSTPROCESSING.HM_THRESHOLD
+        dic["keypoint_limits"] = cfg.MODEL.POSTPROCESSING.KEYPOINT_LIMITS
         return dic
 
     def inference(self, batched_inputs, detected_instances=None, do_postprocess=True):
@@ -57,7 +60,7 @@ class RCNNAndCSL(GeneralizedRCNN):
                     heatmap = heatmap[0, 0, :, :].detach().cpu().numpy()
                     width, height = heatmap.shape
                     # apply threshold to filter noise
-                    heatmap_thres = applyThreshold(heatmap, 0.8)
+                    heatmap_thres = applyThreshold(heatmap, self.hm_threshold)
                     # extract keypoints using non maximum suppression (in fixed size coordinate system)
                     xy_predict = non_max_suppression(np.float32(heatmap_thres),
                                                      None if self.keypoint_limits is None else self.keypoint_limits[i])

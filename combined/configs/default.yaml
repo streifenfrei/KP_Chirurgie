@@ -3,7 +3,6 @@ OUTPUT_DIR: "../out/combined"
 MODEL:
   DEVICE: "cuda"
   WEIGHTS: "../out/combined/model_final.pth"
-  KEYPOINT_LIMITS: [2, 1, 1, 1]
   ROI_HEADS:
     NUM_CLASSES: 3              # segmentation classes
   CSL_HEAD:
@@ -15,8 +14,14 @@ MODEL:
     EVALUATION:
       EPSILON: 1e-6             # epsilon for the dice coefficient (segmentation)
       THRESHOLD_SCORE_LIST: [5, 10, 15, 20, 25, 30, 35, 40, 45, 50]     # thresholds to calculate the threshold scores with (localisation)
+  POSTPROCESSING:
+    HM_THRESHOLD: 0.8
+    KEYPOINT_LIMITS: [2, 1, 1, 1]
 VISUALIZER:
   CLASS_NAMES: ["scissors", "needle_holder", "grasper"]
+  INSTANCE_COLORS: [[0, 0, 255], [255, 255, 255], [255, 0, 0]]
+  KEYPOINT_COLORS: ['firebrick', 'midnightblue', 'sandybrown', 'linen']
+
 DATASETS:
   TRAIN: ("instruments_train",)
   TEST: ("instruments_val",)

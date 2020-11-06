@@ -42,7 +42,7 @@ def inference_on_trained_model(metadata,
         v = CSLVisualizer(im[:, :, ::-1],
                           metadata=metadata,
                           scale=0.8,
-                          instance_mode=ColorMode.IMAGE_BW  # remove the colors of unsegmented pixels
+                          instance_mode=ColorMode.SEGMENTATION
                           )
         out = v.draw_instance_predictions(outputs["instances"].to("cpu"))
         cv2.imwrite(os.path.join(cfg.OUTPUT_DIR, 'yay.png'), out.get_image()[:, :, ::-1])
@@ -57,6 +57,8 @@ if __name__ == "__main__":
     cfg = load_config(config_path=args.config)
     setup_logger(os.path.join(cfg.OUTPUT_DIR, 'saved_logs.log'))
     metadata = register_dataset_and_metadata(args.dataset, cfg.VISUALIZER.CLASS_NAMES)
+    metadata.set(keypoint_colors=cfg.VISUALIZER.KEYPOINT_COLORS)
+    metadata.set(thing_colors=cfg.VISUALIZER.INSTANCE_COLORS)
     if args.train:
         start_training(cfg)
     else:
