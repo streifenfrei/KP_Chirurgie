@@ -1,5 +1,9 @@
+from typing import Tuple, Optional, List, Any
+
 import numpy as np
-from detectron2.modeling import GeneralizedRCNN, META_ARCH_REGISTRY
+from detectron2.config import configurable
+from torch import nn
+from detectron2.modeling import GeneralizedRCNN, META_ARCH_REGISTRY, Backbone
 
 from evaluate import applyThreshold, non_max_suppression
 
@@ -10,15 +14,37 @@ class RCNNAndCSL(GeneralizedRCNN):
     Combined meta architecture. Adds some postprocessing for the csl output
     """
 
+    @configurable
+    def __init__(
+            self,
+            *,
+            backbone: Backbone,
+            proposal_generator: nn.Module,
+            roi_heads: nn.Module,
+            pixel_mean: Tuple[float],
+            pixel_std: Tuple[float],
+            input_format: Optional[str] = None,
+            vis_period: int = 0,
+            keypoint_limits: List[int] = None
+    ):
+        super().__init__(backbone=backbone, proposal_generator=proposal_generator, roi_heads=roi_heads,
+                         pixel_mean=pixel_mean, pixel_std=pixel_std, input_format=input_format, vis_period=vis_period)
+        self.keypoint_limits = keypoint_limits
+
+    @classmethod
+    def from_config(cls, cfg):
+        dic = super().from_config(cfg)
+        dic["keypoint_limits"] = cfg.MODEL.KEYPOINT_LIMITS
+        return dic
+
     def inference(self, batched_inputs, detected_instances=None, do_postprocess=True):
         results = super().inference(batched_inputs, detected_instances, do_postprocess)
         if do_postprocess:
-            return RCNNAndCSL._postprocess_csl(results)
+            return self._postprocess_csl(results)
         else:
             return results
 
-    @staticmethod
-    def _postprocess_csl(results):
+    def _postprocess_csl(self, results):
         for results_per_image in results:
             instances_per_image = results_per_image["instances"]
             keypoints = []
@@ -27,13 +53,14 @@ class RCNNAndCSL(GeneralizedRCNN):
                 x1_box, y1_box, x2_box, y2_box = box.detach().cpu().numpy()
                 width_box, height_box = x2_box - x1_box, y2_box - y1_box
                 keypoints_per_instance = []
-                for heatmap in heatmaps_per_instance.split(1, dim=1):
+                for i, heatmap in enumerate(heatmaps_per_instance.split(1, dim=1)):
                     heatmap = heatmap[0, 0, :, :].detach().cpu().numpy()
                     width, height = heatmap.shape
                     # apply threshold to filter noise
                     heatmap_thres = applyThreshold(heatmap, 0.8)
                     # extract keypoints using non maximum suppression (in fixed size coordinate system)
-                    xy_predict = non_max_suppression(np.float32(heatmap_thres))
+                    xy_predict = non_max_suppression(np.float32(heatmap_thres),
+                                                     None if self.keypoint_limits is None else self.keypoint_limits[i])
                     keypoints_per_class = []
                     for x_hm, y_hm in xy_predict:
                         # fit keypoints to the image's coordinate system

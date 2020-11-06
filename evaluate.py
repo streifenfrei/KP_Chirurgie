@@ -11,7 +11,7 @@ from dataLoader import image_transform, OurDataLoader, train_val_dataset, landma
 
 
 # https://stackoverflow.com/questions/9111711/get-coordinates-of-local-maxima-in-2d-array-above-certain-value
-def non_max_suppression(img_landmark):
+def non_max_suppression(img_landmark, limit=None):
     neighborhood_size = 7
     threshold = 0.4
     data = np.array(img_landmark * 256, dtype=int)
@@ -28,11 +28,11 @@ def non_max_suppression(img_landmark):
     xy = []
     for dy, dx in slices:
         x_center = (dx.start + dx.stop - 1) // 2
-        # x.append(x_center)
         y_center = (dy.start + dy.stop - 1) // 2
-        # y.append(y_center)
         xy.append([x_center, y_center])
-    # print(x,y)
+    if limit is not None and len(xy) > limit:
+        xy.sort(key=lambda xy: img_landmark[xy[1], xy[0]], reverse=True)
+        xy = xy[:limit]
     return np.array(xy)
 
 

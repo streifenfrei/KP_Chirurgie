@@ -7,6 +7,7 @@ from combined.modeling.meta_arch import *
 
 # add new csl config parameter keys to the cfg (the values are actually irrelevant as they are overwritten by the .yaml)
 def add_csl_config(cfg):
+    cfg.MODEL.KEYPOINT_LIMITS = [2, 1, 1, 1]
     cfg.MODEL.CSL_HEAD = CN()
     cfg.MODEL.CSL_HEAD.NAME = "CSLHead"
     cfg.MODEL.CSL_HEAD.IN_FEATURES = ["p3", "p4", "p5", "p6"]

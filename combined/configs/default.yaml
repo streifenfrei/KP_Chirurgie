@@ -3,6 +3,7 @@ OUTPUT_DIR: "../out/combined"
 MODEL:
   DEVICE: "cuda"
   WEIGHTS: "../out/combined/model_final.pth"
+  KEYPOINT_LIMITS: [2, 1, 1, 1]
   ROI_HEADS:
     NUM_CLASSES: 3              # segmentation classes
   CSL_HEAD:
