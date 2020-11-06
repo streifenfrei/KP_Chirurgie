@@ -22,71 +22,58 @@ class CSLHead(nn.Module):
         target = target_bool.double()
         loss = torch.nn.functional.binary_cross_entropy_with_logits(pred, target)
         # evaluation
-        storage = get_event_storage()
-        pred_bool = pred > 0.5
-        storage.put_scalar("csl_segmentation/dice", DiceCoefficient(epsilon=self.epsilon)(pred_bool, target_bool))
-        mask_incorrect = pred_bool != target_bool
-        mask_accuracy = 1 - (mask_incorrect.sum().item() / max(mask_incorrect.numel(), 1.0))
-        num_positive = target_bool.sum().item()
-        false_positive = (mask_incorrect & ~target_bool).sum().item() / max(
-            target_bool.numel() - num_positive, 1.0
-        )
-        false_negative = (mask_incorrect & target_bool).sum().item() / max(num_positive, 1.0)
-        storage.put_scalar("csl_segmentation/accuracy", mask_accuracy)
-        storage.put_scalar("csl_segmentation/false_positive", false_positive)
-        storage.put_scalar("csl_segmentation/false_negative", false_negative)
-        storage.put_scalar("csl_segmentation/loss", loss.item())
+        try:
+            storage = get_event_storage()
+            pred_bool = pred > 0.5
+            storage.put_scalar("csl_segmentation/dice", DiceCoefficient(epsilon=self.epsilon)(pred_bool, target_bool))
+            mask_incorrect = pred_bool != target_bool
+            mask_accuracy = 1 - (mask_incorrect.sum().item() / max(mask_incorrect.numel(), 1.0))
+            num_positive = target_bool.sum().item()
+            false_positive = (mask_incorrect & ~target_bool).sum().item() / max(
+                target_bool.numel() - num_positive, 1.0
+            )
+            false_negative = (mask_incorrect & target_bool).sum().item() / max(num_positive, 1.0)
+            storage.put_scalar("csl_segmentation/accuracy", mask_accuracy)
+            storage.put_scalar("csl_segmentation/false_positive", false_positive)
+            storage.put_scalar("csl_segmentation/false_negative", false_negative)
+            storage.put_scalar("csl_segmentation/loss", loss.item())
+        except Exception as e:
+            print("Exception during evalution of segmentation: {0}".format(e))
         return loss
 
     def _localisation_loss(self, pred, target):
-        target = target.to(pred.device)
-        weights = torch.where(target > 0.1, torch.full_like(target, self.loc_weight), torch.full_like(target, 1))
-        all_mse = (pred - target) ** 2
-        weighted_mse = all_mse * weights
-        loss = weighted_mse.sum() / (target.shape[0] * target.shape[1])
-        # fancy debugging visualisation
-        #import matplotlib
-        #matplotlib.use("TkAgg")
-        #import matplotlib.pyplot as plt
-        #for mask, locs in zip(pred.split(1,0), target.split(1,0)):
-        #    fig = plt.figure(figsize=(12, 6))
-        #    index = 1
-        #    for loc1, loc2 in zip(locs.split(1, 1), mask.split(1,1)):
-        #        fig.add_subplot(2,4,index)
-        #        print(torch.max(loc1).item())
-        #        plt.imshow(loc1.squeeze().detach())
-        #        fig.add_subplot(2, 4, index+4)
-        #        print(torch.max(loc2).item())
-        #        plt.imshow(loc2.squeeze().detach())
-        #        index += 1
-        #    plt.show()
 
-        #evaluation
-        storage = get_event_storage()
-        image_pairs = []
-        for pred_single, target_single in zip(pred.split(1, 0), target.split(1, 0)):
-            for pred_class, target_class in zip(pred_single.split(1, 1), target_single.split(1, 1)):
-                pred_np = pred_class.squeeze().detach().cpu().numpy()
-                target_np = target_class.squeeze().detach().cpu().numpy()
-                image_pairs.append((target_np, pred_np))
-        threshold_score, true_positive, false_positive, false_negative \
-            = get_threshold_score(image_pairs, self.threshold_list)
-        """
-        if sum(threshold_score) > 0:
-            score = []
-            for i, score_count in enumerate(threshold_score):
-                for j in range(score_count):
-                    score.append(self.threshold_list[i])
-            storage.put_histogram("csl_localisation/treshold_score", torch.tensor(score), bins=len(threshold_score))
-        """ 
-        epsilon = 10e-6
-        precision = float(true_positive) / (true_positive + false_positive + epsilon)
-        recall = float(true_positive) / (true_positive * false_negative + epsilon)
-        f1 = 2 / ((1/(recall + epsilon)) + (1/(precision + epsilon)))
-        storage.put_scalar("csl_localisation/precision", precision)
-        storage.put_scalar("csl_localisation/recall", recall)
-        storage.put_scalar("csl_localisation/f1", f1)
-        storage.put_scalar("csl_localisation/loss", loss.item())
+        target = target.to(pred.device)
+        mse = torch.nn.MSELoss()
+        loss = mse(pred, target)
+
+        # evaluation
+        try:
+            storage = get_event_storage()
+            image_pairs = []
+            for pred_single, target_single in zip(pred.split(1, 0), target.split(1, 0)):
+                for pred_class, target_class in zip(pred_single.split(1, 1), target_single.split(1, 1)):
+                    pred_np = pred_class.squeeze().detach().cpu().numpy()
+                    target_np = target_class.squeeze().detach().cpu().numpy()
+                    image_pairs.append((target_np, pred_np))
+            threshold_score, true_positive, false_positive, false_negative \
+                = get_threshold_score(image_pairs, self.threshold_list)
+            if sum(threshold_score) > 0:
+                score = []
+                for i, score_count in enumerate(threshold_score):
+                    for j in range(score_count):
+                        score.append(self.threshold_list[i])
+                storage.put_histogram("csl_localisation/treshold_score", torch.tensor(score), bins=len(threshold_score))
+            epsilon = 10e-6
+            precision = float(true_positive) / (true_positive + false_positive + epsilon)
+            recall = float(true_positive) / (true_positive * false_negative + epsilon)
+            f1 = 2 / ((1/(recall + epsilon)) + (1/(precision + epsilon)))
+            storage.put_scalar("csl_localisation/precision", precision)
+            storage.put_scalar("csl_localisation/recall", recall)
+            storage.put_scalar("csl_localisation/f1", f1)
+            storage.put_scalar("csl_localisation/loss", loss.item())
+        except Exception as e:
+            print("Exception during evalution of localisation: {0}".format(e))
         return loss
 
     def __init__(self, cfg):

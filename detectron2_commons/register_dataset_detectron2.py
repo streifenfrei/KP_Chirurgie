@@ -4,7 +4,6 @@ from argparse import ArgumentParser
 
 import numpy as np
 from detectron2.structures import BoxMode
-import dataLoader as dl
 import glob
 from pprint import pprint
 from typing import List, Dict
