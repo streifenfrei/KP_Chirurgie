@@ -1,5 +1,4 @@
 import os
-import sys
 import cv2
 from argparse import ArgumentParser
 from detectron2.data import MetadataCatalog
