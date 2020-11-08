@@ -184,9 +184,10 @@ class CSLHead(nn.Module):
                 seg, loc = self.decoder[cls](features)
                 segs.append(seg)
                 locs.append(loc)
-            seg = torch.cat(segs)
-            loc = torch.cat(locs)
-            output.append((seg, loc))
+            if segs and locs:
+                seg = torch.cat(segs)
+                loc = torch.cat(locs)
+                output.append((seg, loc))
         return output
 
     def forward(self, x, instances):

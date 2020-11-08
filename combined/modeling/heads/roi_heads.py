@@ -66,22 +66,18 @@ class CSLROIHeads(StandardROIHeads):
 
     @staticmethod
     def remove_instances_over_limit(instances, limit=2):
+        out_instances = []
         for instances_per_image in instances:
-            pred_boxes = list(torch.split(instances_per_image.pred_boxes.tensor, 1, dim=0))
             scores = instances_per_image.scores.tolist()
-            pred_classes = list(torch.split(instances_per_image.pred_classes, 1, dim=0))
-            while len(scores) > limit:
+            out_indices = []
+            while len(scores) - len(out_indices) > limit:
                 i = scores.index(min(scores))
-                pred_boxes.pop(i)
-                scores.pop(i)
-                pred_classes.pop(i)
-            pred_boxes = Boxes(torch.cat(pred_boxes))
-            scores = torch.FloatTensor(scores)
-            pred_classes = torch.cat(pred_classes)
-            instances_per_image.pred_boxes = pred_boxes
-            instances_per_image.scores = scores
-            instances_per_image.pred_classes = pred_classes
-        return instances
+                scores[i] = 1
+                out_indices.append(i)
+            keep_indices = list(set(range(len(scores))) - set(out_indices))
+            keep_instances = instances_per_image[keep_indices]
+            out_instances.append(keep_instances)
+        return out_instances
 
     def forward_with_given_boxes(
             self, features: Dict[str, torch.Tensor], instances: List[Instances]
