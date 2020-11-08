@@ -4,7 +4,7 @@ import torch
 from detectron2.config import configurable
 from detectron2.modeling import ROI_HEADS_REGISTRY, StandardROIHeads
 from detectron2.modeling.roi_heads import select_foreground_proposals
-from detectron2.structures import ImageList, Instances
+from detectron2.structures import ImageList, Instances, Boxes
 from torch import nn
 
 from combined.modeling.heads.csl_head import build_csl_head
@@ -64,10 +64,30 @@ class CSLROIHeads(StandardROIHeads):
             losses.update(self._forward_csl(features, instances))
         return instances, losses
 
+    @staticmethod
+    def remove_instances_over_limit(instances, limit=2):
+        for instances_per_image in instances:
+            pred_boxes = list(torch.split(instances_per_image.pred_boxes.tensor, 1, dim=0))
+            scores = instances_per_image.scores.tolist()
+            pred_classes = list(torch.split(instances_per_image.pred_classes, 1, dim=0))
+            while len(scores) > limit:
+                i = scores.index(min(scores))
+                pred_boxes.pop(i)
+                scores.pop(i)
+                pred_classes.pop(i)
+            pred_boxes = Boxes(torch.cat(pred_boxes))
+            scores = torch.FloatTensor(scores)
+            pred_classes = torch.cat(pred_classes)
+            instances_per_image.pred_boxes = pred_boxes
+            instances_per_image.scores = scores
+            instances_per_image.pred_classes = pred_classes
+        return instances
+
     def forward_with_given_boxes(
             self, features: Dict[str, torch.Tensor], instances: List[Instances]
     ) -> List[Instances]:
         instances = super().forward_with_given_boxes(features, instances)
+        instances = CSLROIHeads.remove_instances_over_limit(instances)
         instances = self._forward_csl(features, instances)
         return instances
 
