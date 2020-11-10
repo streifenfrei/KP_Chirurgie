@@ -13,10 +13,13 @@ class CSLVisualizer(Visualizer):
     """
     def draw_instance_predictions(self, predictions):
         super().draw_instance_predictions(predictions)
-        loc_class_list = ['firebrick', 'midnightblue', 'sandybrown', 'linen']
-        for keypoints_per_instance in predictions.pred_loc:
-            for i, keypoints_per_class in enumerate(keypoints_per_instance):
-                for xy in keypoints_per_class:
-                    self.output.ax.add_patch(mpl.patches.Circle(xy, radius=5, fill=True, color=loc_class_list[i]))
+        keypoint_colors = self.metadata.get("keypoint_colors")
+        if len(predictions) > 0:
+            for keypoints_per_instance in predictions.pred_loc:
+                for i, keypoints_per_class in enumerate(keypoints_per_instance):
+                    for xy in keypoints_per_class:
+                        self.output.ax.add_patch(mpl.patches.Circle(xy, radius=5, fill=True, color=keypoint_colors[i]))
         return self.output
 
+    def _jitter(self, color):
+        return color
