@@ -44,8 +44,27 @@ class CSLHead(nn.Module):
     def _localisation_loss(self, pred, target):
 
         target = target.to(pred.device)
-        mse = torch.nn.MSELoss()
-        loss = mse(pred, target)
+        eps = 0.00001
+        if self.loss_type == "plain_mse":
+            mse = torch.nn.MSELoss()
+            loss = mse(pred, target)
+        elif self.loss_type == "weighted_mse":
+            weights = torch.where(target > eps, torch.full_like(target, self.loc_weight), torch.full_like(target, 1))
+            loss = torch.nn.MSELoss(reduction='none')(pred, target) * weights
+            loss = loss.sum() / torch.numel(loss)
+            # all_mse = (pred - target) ** 2
+            # weighted_mse = all_mse * weights
+            # loss = weighted_mse.sum() / (target.shape[0] * target.shape[1])
+        elif self.loss_type == "weighted_bce":
+            target = torch.where(target > 0.001, torch.full_like(target, 1), torch.full_like(target, 0))
+            weights = torch.where(target > 0.001, torch.full_like(target, self.loc_weight), torch.full_like(target, 1))
+            loss = torch.nn.functional.binary_cross_entropy_with_logits(pred, target, weight=weights)
+        elif self.loss_type == "weighted_soft_bce":
+            # target = torch.where(target > 0.001, torch.full_like(target, 1), torch.full_like(target, 0))
+            weights = torch.where(target > eps, torch.full_like(target, self.loc_weight), torch.full_like(target, 1))
+            loss = torch.nn.functional.binary_cross_entropy_with_logits(pred, target, weight=weights)  # TODO applies sigmoid once again
+        else:
+            raise ValueError("Unknown loss type: {}".format(self.loss_type))
 
         # evaluation
         try:
@@ -58,15 +77,17 @@ class CSLHead(nn.Module):
                     image_pairs.append((target_np, pred_np))
             threshold_score, true_positive, false_positive, false_negative \
                 = get_threshold_score(image_pairs, self.threshold_list)
+            """ 
             if sum(threshold_score) > 0:
                 score = []
                 for i, score_count in enumerate(threshold_score):
                     for j in range(score_count):
                         score.append(self.threshold_list[i])
                 storage.put_histogram("csl_localisation/treshold_score", torch.tensor(score), bins=len(threshold_score))
+            """
             epsilon = 10e-6
             precision = float(true_positive) / (true_positive + false_positive + epsilon)
-            recall = float(true_positive) / (true_positive * false_negative + epsilon)
+            recall = float(true_positive) / (true_positive + false_negative + epsilon)
             f1 = 2 / ((1/(recall + epsilon)) + (1/(precision + epsilon)))
             storage.put_scalar("csl_localisation/precision", precision)
             storage.put_scalar("csl_localisation/recall", recall)
@@ -84,6 +105,7 @@ class CSLHead(nn.Module):
         self.epsilon = cfg.MODEL.CSL_HEAD.EVALUATION.EPSILON
         self.loc_weight = cfg.MODEL.CSL_HEAD.LOC_WEIGHT
         self.threshold_list = cfg.MODEL.CSL_HEAD.EVALUATION.THRESHOLD_SCORE_LIST
+        self.loss_type = cfg.MODEL.CSL_HEAD.LOSS_TYPE
         self.device = cfg.MODEL.DEVICE
         self.output_resolution = cfg.MODEL.CSL_HEAD.POOLER_RESOLUTION * 16
         segmentation_classes = cfg.MODEL.ROI_HEADS.NUM_CLASSES
