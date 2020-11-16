@@ -45,24 +45,24 @@ class CSLHead(nn.Module):
 
         target = target.to(pred.device)
         eps = 0.00001
+        if "weighted" in self.loss_type:
+            weights = torch.where(target > eps, torch.full_like(target, self.loc_weight), torch.full_like(target, 1.0 - self.loc_weight))
         if self.loss_type == "plain_mse":
             mse = torch.nn.MSELoss()
             loss = mse(pred, target)
         elif self.loss_type == "weighted_mse":
-            weights = torch.where(target > eps, torch.full_like(target, self.loc_weight), torch.full_like(target, 1))
-            loss = torch.nn.MSELoss(reduction='none')(pred, target) * weights
+            # loss = torch.nn.MSELoss(reduction='none')(pred, target) * weights
+            loss = ((pred - target) ** 2) * weights
             loss = loss.sum() / torch.numel(loss)
-            # all_mse = (pred - target) ** 2
-            # weighted_mse = all_mse * weights
-            # loss = weighted_mse.sum() / (target.shape[0] * target.shape[1])
+            # loss = loss.sum() / (target.shape[0] * target.shape[1])
+        elif self.loss_type == "weighted_focal_mse":
+            loss = ((pred - target) ** 4) * weights
+            loss = loss.sum() / torch.numel(loss)
         elif self.loss_type == "weighted_bce":
-            target = torch.where(target > 0.001, torch.full_like(target, 1), torch.full_like(target, 0))
-            weights = torch.where(target > 0.001, torch.full_like(target, self.loc_weight), torch.full_like(target, 1))
+            target = torch.where(target > eps, torch.full_like(target, 1), torch.full_like(target, 0))
             loss = torch.nn.functional.binary_cross_entropy_with_logits(pred, target, weight=weights)
         elif self.loss_type == "weighted_soft_bce":
-            # target = torch.where(target > 0.001, torch.full_like(target, 1), torch.full_like(target, 0))
-            weights = torch.where(target > eps, torch.full_like(target, self.loc_weight), torch.full_like(target, 1))
-            loss = torch.nn.functional.binary_cross_entropy_with_logits(pred, target, weight=weights)  # TODO applies sigmoid once again
+            loss = torch.nn.functional.binary_cross_entropy_with_logits(pred, target, weight=weights)
         else:
             raise ValueError("Unknown loss type: {}".format(self.loss_type))
 
@@ -101,9 +101,11 @@ class CSLHead(nn.Module):
         super().__init__()
         self.hm_preprocessing_type = cfg.MODEL.CSL_HEAD.HM_PREPROCESSING
         self.lambdaa = cfg.MODEL.CSL_HEAD.LAMBDA
+        assert(self.lambdaa >= 0 and self.lambdaa <= 1)
         self.sigma = cfg.MODEL.CSL_HEAD.SIGMA
         self.epsilon = cfg.MODEL.CSL_HEAD.EVALUATION.EPSILON
         self.loc_weight = cfg.MODEL.CSL_HEAD.LOC_WEIGHT
+        assert(self.loc_weight >= 0 and self.loc_weight <= 1)
         self.threshold_list = cfg.MODEL.CSL_HEAD.EVALUATION.THRESHOLD_SCORE_LIST
         self.loss_type = cfg.MODEL.CSL_HEAD.LOSS_TYPE
         self.device = cfg.MODEL.DEVICE
@@ -133,6 +135,7 @@ class CSLHead(nn.Module):
                             heatmap[x, y] = 1
                         heatmap = max_gaussian_help(heatmap, self.sigma, 1)
                         heatmap = heatmap * 2 * np.pi * (self.sigma ** 2)  # normalize
+                        heatmap = np.clip(heatmap, 0.0, 1.0)  # make sure that max value is 1
                         calculated_heatmaps[kstring] = heatmap
                     else:
                         heatmap = np.expand_dims(heatmap, axis=2)
@@ -229,7 +232,12 @@ class CSLHead(nn.Module):
             gt_masks = torch.cat(gt_masks, dim=0)
             gt_locs = torch.cat(gt_locs, dim=0)
 
-            return {"loss_seg": self._segmentation_loss(seg, gt_masks),
+            if self.lambdaa < 1:
+                loss_seg = self._segmentation_loss(seg, gt_masks)
+            else:
+                loss_seg = 42
+
+            return {"loss_seg": (1 - self.lambdaa) * loss_seg,
                     "loss_loc": self.lambdaa * self._localisation_loss(loc, gt_locs)}
         else:
             for instances_per_image, (seg, loc) in zip(instances, x):
