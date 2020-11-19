@@ -1,6 +1,5 @@
 from enum import IntEnum
 
-from detectron2.layers import ROIAlign
 from torch import nn
 import torch
 
@@ -15,7 +14,7 @@ class Decoder(nn.Module):
 
     def __init__(self, localisation_classes, dropout=0.5):
         super().__init__()
-        # the layers in our decoding head have only 256 input channels, due to the feature maps outputted by the FPN
+        # the layers in our decoding head have only 256 input channels, due to the feature maps output by the FPN
         # (the original architecture halves the channel count in every upsampling step starting with 2048,
         # which is common in UNET architectures)
         self.bottleneck_layer = self._make_layer(256, 256, sampling=self._Sampling.none_norm)
@@ -36,7 +35,7 @@ class Decoder(nn.Module):
 
         self.segmentation_layer = conv3x3(64, 1)
         self.pre_localisation_layer = self._make_layer(64, 32, sampling=self._Sampling.none_relu)
-        self.localisation_layer = self._make_layer(33, localisation_classes, sampling=self._Sampling.none_relu)
+        self.localisation_layer = conv3x3(33, localisation_classes)
 
     def _make_layer(self, inplanes, outplanes, sampling: _Sampling = _Sampling.none_norm):
         block = None
@@ -45,7 +44,7 @@ class Decoder(nn.Module):
         elif sampling == self._Sampling.none_norm:
             block = nn.Sequential(conv1x1(inplanes, outplanes), nn.BatchNorm2d(outplanes))
         elif sampling == self._Sampling.none_relu:
-            block = nn.Sequential(conv3x3(inplanes, outplanes), nn.ReLU(inplace=True))
+            block = nn.Sequential(conv3x3(inplanes, outplanes), nn.LeakyReLU(inplace=True))
         return block
 
     def forward(self, features):
@@ -73,7 +72,6 @@ class Decoder(nn.Module):
 
         # csl part
         segmentation = self.segmentation_layer(x)
-
         x = self.pre_localisation_layer(x)
         x = torch.cat((segmentation, x), 1)
         localisation = self.localisation_layer(x)

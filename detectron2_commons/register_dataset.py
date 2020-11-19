@@ -4,7 +4,6 @@ from argparse import ArgumentParser
 
 import numpy as np
 from detectron2.structures import BoxMode
-import dataLoader as dl
 import glob
 from pprint import pprint
 from typing import List, Dict
@@ -99,11 +98,9 @@ def create_desription_single_file(json_file: str, for_json: dict, path_to_save: 
         filename = filename_without_extension + '.png'
         img = cv2.imread(f"{path_to_save}/{filename}")
         if (img is not None) and (img != ''):
-            #img = dl.img_b64_to_arr(imageData)
 
             height, width = img.shape[:2]
             shapes = data['shapes']
-            #filename = data['imagePath']
 
             for_json[str(filename)] = single_image
             single_image['fileref'] = ""

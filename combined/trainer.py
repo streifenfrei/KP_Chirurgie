@@ -2,7 +2,7 @@ import copy
 
 import torch
 from detectron2.config import CfgNode
-from detectron2.data import build_detection_test_loader, build_detection_train_loader, DatasetMapper
+from detectron2.data import build_detection_test_loader, build_detection_train_loader
 from detectron2.data import detection_utils as utils
 from detectron2.data.transforms import apply_transform_gens, ResizeShortestEdge
 from detectron2.engine import DefaultTrainer
@@ -13,7 +13,8 @@ import numpy as np
 
 class Mapper:
     """
-    Custom mapper which applies the transforms of DatasetMapper to our CSL keypoints
+    Custom mapper which applies the transforms of DatasetMapper to our CSL keypoints. We only do rotation as augmentation
+    as implementing flipping the images is not trivial/time-consuming.
     """
     def __init__(self, cfg, is_train=True):
         self.augmentations = []
@@ -31,6 +32,7 @@ class Mapper:
         self.augmentations.append(ResizeShortestEdge(min_size, max_size, sample_style))
 
     def __call__(self, dataset_dict):
+        # ============================== copied from detectrons default mapper ======================================
         dataset_dict = copy.deepcopy(dataset_dict)  # it will be modified by code below
         image = utils.read_image(dataset_dict["file_name"], format=self.img_format)
         utils.check_image_size(dataset_dict, image)
@@ -55,7 +57,9 @@ class Mapper:
             instances = utils.annotations_to_instances(
                 annos, image_shape, mask_format=self.mask_format
             )
+        # ============================================================================================================
 
+            # transform our csl keypoints
             keypoints = []
             for instance in annos:
                 keypoints_per_instance = []

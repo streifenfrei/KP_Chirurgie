@@ -10,10 +10,20 @@ MODEL:
     LAMBDA: 0.05                # tradeoff parameter between segmentation and localisation (high: better loc, worse seg)
     SIGMA: 7                    # standard deviation for gaussian kernel applied to ground truth heatmaps
     POOLER_RESOLUTION: 7        # resolution of the first feature map, final resolution is: x * 16
-    HM_PREPROCESSING: "direct"  # type of gt heatmap preprocessing: ["align", "direct"]
+    HM_PREPROCESSING: "align"   # type of gt heatmap preprocessing: ["align", "direct"]
+    LOSS_TYPE: "weighted_mse"   # the localisation loss: ["plain_mse", "weighted_mse", "weighted_focal_mse", weighted_bce", "weighted_soft_bce"]
+    LOC_WEIGHT: 0.5               # the weight for all weighted localisation losses
     EVALUATION:
       EPSILON: 1e-6             # epsilon for the dice coefficient (segmentation)
       THRESHOLD_SCORE_LIST: [5, 10, 15, 20, 25, 30, 35, 40, 45, 50]     # thresholds to calculate the threshold scores with (localisation)
+  POSTPROCESSING: # inference only
+    HM_THRESHOLD: 0.8           # threshold applied to the predicted heatmaps before non-maximum-suppression
+    KEYPOINT_LIMITS: [2, 1, 1, 1] # keypoint limits per class (e.g. 2 jaws, 1 center etc..)
+VISUALIZER:
+  CLASS_NAMES: ["scissors", "needle_holder", "grasper"]
+  INSTANCE_COLORS: [[0, 0, 255], [255, 255, 255], [255, 0, 0]]
+  KEYPOINT_COLORS: ['firebrick', 'midnightblue', 'sandybrown', 'linen']
+
 DATASETS:
   TRAIN: ("instruments_train",)
   TEST: ("instruments_val",)
@@ -22,4 +32,3 @@ SOLVER:
   MAX_ITER:  400000
   BASE_LR: 0.00025
   IMS_PER_BATCH: 1
-
