@@ -18,6 +18,10 @@ def conv1x1(in_planes, out_planes, stride=1):
 
 
 class DecoderBlock(nn.Module):
+    """
+    Decoder block according to https://arxiv.org/abs/1606.00373.
+    These blocks are used in the CSL paper (https://arxiv.org/abs/1703.10701)
+    """
     def __init__(self, in_channels, out_channels):
         super(DecoderBlock, self).__init__()
         self.in_channels = in_channels
@@ -31,12 +35,13 @@ class DecoderBlock(nn.Module):
         self.relu2 = nn.ReLU(inplace=True)
 
     def forward(self, x):
+        # regenerate indices if batch size changes
         if self.indices is None or list(self.indices.shape) != list(x.shape):
             copy = torch.clone(x).cpu().detach()
             self.indices = construct_indices(copy)
             self.indices = self.indices.to(x.device)
             self.indices.requires_grad = False
-            
+
         proj = x = self.unpooling(x, self.indices)
 
         x = self.conv1(x)
@@ -49,6 +54,10 @@ class DecoderBlock(nn.Module):
 
 
 def construct_indices(after_pooling):
+    """
+    Generates an indices tensor required by the MaxUnpool2d module. The unpooling is done by simply mapping each input
+    value to the top left corner of a 2x2 kernel.
+    """
     our_indices = np.zeros_like(after_pooling, dtype=np.int64)
     batch_num, channel_num, row_num, col_num = after_pooling.shape
     for batch_id in range(batch_num):

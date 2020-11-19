@@ -17,24 +17,24 @@ from detectron2_commons.commons import register_dataset_and_metadata, get_instru
 def load_config(config_path: str = None):
     assert config_path
     cfg = get_cfg()
+    # add new csl entries to the config dict, so we don't get an error when parsing them from the config file
     add_csl_config(cfg)
     cfg.merge_from_file(config_path)
     os.makedirs(cfg.OUTPUT_DIR, exist_ok=True)
     return cfg
 
 
-def start_training(cfg):
+def training(cfg):
     trainer = Trainer(cfg)
     trainer.resume_or_load(resume=True)
     trainer.train()
 
 
-def inference_on_trained_model(metadata,
-                               path_to_data,
-                               cfg) -> None:
+def inference(metadata,
+              path_to_data,
+              cfg) -> None:
     cfg.MODEL.DEVICE = 'cuda' if torch.cuda.is_available() else 'cpu'
     predictor = DefaultPredictor(cfg)
-
     dataset_dicts = get_instrument_dicts(f"{path_to_data}/val")
     for d in random.sample(dataset_dicts, 1):
         im = cv2.imread(d["file_name"])
@@ -60,6 +60,6 @@ if __name__ == "__main__":
     metadata.set(keypoint_colors=cfg.VISUALIZER.KEYPOINT_COLORS)
     metadata.set(thing_colors=cfg.VISUALIZER.INSTANCE_COLORS)
     if args.train:
-        start_training(cfg)
+        training(cfg)
     else:
-        inference_on_trained_model(metadata, args.dataset, cfg=cfg)
+        inference(metadata, args.dataset, cfg=cfg)

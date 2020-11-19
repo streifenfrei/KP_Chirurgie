@@ -98,11 +98,9 @@ def create_desription_single_file(json_file: str, for_json: dict, path_to_save: 
         filename = filename_without_extension + '.png'
         img = cv2.imread(f"{path_to_save}/{filename}")
         if (img is not None) and (img != ''):
-            #img = dl.img_b64_to_arr(imageData)
 
             height, width = img.shape[:2]
             shapes = data['shapes']
-            #filename = data['imagePath']
 
             for_json[str(filename)] = single_image
             single_image['fileref'] = ""

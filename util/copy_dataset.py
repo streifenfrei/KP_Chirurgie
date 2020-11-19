@@ -2,6 +2,10 @@ import os
 from argparse import ArgumentParser
 from shutil import copy2
 
+"""
+This script copies the .json files from a dataset directory to a single directory removing redundant file names.
+"""
+
 
 def copy_dataset(source, destination):
     file_counter = {}

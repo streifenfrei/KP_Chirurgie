@@ -8,6 +8,10 @@ from detectron2.utils.visualizer import ColorMode
 from combined.combined_run import load_config
 from combined.visualizer import CSLVisualizer
 
+"""
+Processes a video and visualizes the predictions of the combined network.
+"""
+
 
 def process_video(video, cfg, metadata):
     capture = cv2.VideoCapture(video)

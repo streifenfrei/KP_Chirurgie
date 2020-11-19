@@ -10,6 +10,7 @@ import detectron2
 
 def get_instrument_dicts(img_dir: str,
                       json_with_desription_name: str = "dataset_registration_detectron2.json") -> List[dict]:
+
     json_file = os.path.join(img_dir, json_with_desription_name)
     with open(json_file) as f:
         imgs_anns = json.load(f)

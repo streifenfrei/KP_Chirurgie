@@ -1,15 +1,14 @@
 import os
-import traceback
 from enum import IntEnum
 from torch.utils.tensorboard import SummaryWriter
 
 from csl.net_modules import *
-from torch.optim.lr_scheduler import *
-from dataLoader import train_val_dataset, OurDataLoader
+from csl.data_loader import train_val_dataset, OurDataLoader
 
 # for evaluating the local result
-from evaluate import findNN, plotOverlayImages, plot_threshold_score
+from util.evaluate import plot_overlay_images, plot_threshold_score
 from skimage.transform import resize
+
 
 class CSLNet(nn.Module):
     _res_net_layers = [
@@ -63,11 +62,11 @@ class CSLNet(nn.Module):
         self.decoding_layer3_2 = self._make_layer(128, sampling=self._Sampling.none_norm)
         self.decoding_layer4 = self._make_layer(64, sampling=self._Sampling.up)
 
-        self.segmentation_layer = conv3x3(self.inplanes, 1) # indeed remove the relu
+        self.segmentation_layer = conv3x3(self.inplanes, 1)  # indeed remove the relu
         self.pre_localisation_layer = self._make_layer(32, sampling=self._Sampling.none_relu)
         self.inplanes = 33
         self.localisation_layer = self._make_layer(localisation_classes, sampling=self._Sampling.none_relu)
-        #self.localisation_layer = nn.Sequential(conv3x3(self.inplanes, localisation_classes), nn.Sigmoid())
+        # self.localisation_layer = nn.Sequential(conv3x3(self.inplanes, localisation_classes), nn.Sigmoid())
         self.localisation_classes = localisation_classes
         _dropout = 0.5
         self.dropout_en1 = nn.Dropout(p=_dropout)
@@ -145,10 +144,10 @@ class CSLNet(nn.Module):
                 imags_predict = localisation[0, loc_class_, :, :]
 
                 print(imags_label.shape, imags_predict.shape)
-                #findNN(imags_label, imags_predict, '../out/local_test' + str(i) +'_c' + str(loc_class_) + '.png')
+                # findNN(imags_label, imags_predict, '../out/local_test' + str(i) +'_c' + str(loc_class_) + '.png')
                 all_image_list.append((imags_label, imags_predict))
         plot_threshold_score(all_image_list)
-          
+
     def show_all_result(self, dataset, device='cpu', batch_size=1):
         loader = train_val_dataset(dataset, validation_split=0, train_batch_size=batch_size,
                                    valid_batch_size=batch_size, shuffle_dataset=True)[0]
@@ -166,15 +165,16 @@ class CSLNet(nn.Module):
             target = target.cpu().detach().numpy()
 
             batch_size, seg_classes, width, height = list(segmentation.shape)
-            
-            ori_img = inputs[0].view(inputs[0].shape[0], inputs[0].shape[1], inputs[0].shape[2]).permute(1, 2, 0).cpu().detach().numpy()
-            #ori_img = resize(ori_img, (256, 480, 3))
-            #print('ori_img.shape:', ori_img.shape)
-            
+
+            ori_img = inputs[0].view(inputs[0].shape[0], inputs[0].shape[1], inputs[0].shape[2]).permute(1, 2,
+                                                                                                         0).cpu().detach().numpy()
+            # ori_img = resize(ori_img, (256, 480, 3))
+            # print('ori_img.shape:', ori_img.shape)
+
             seg_image = (nn.Sigmoid()(segmentation[0, 0, :, :].view(width, height))).numpy()
-            seg_image = resize(seg_image,(ori_img.shape[0], ori_img.shape[1]))
+            seg_image = resize(seg_image, (ori_img.shape[0], ori_img.shape[1]))
             print('seg_image.shape:', seg_image.shape)
-            
+
             batch_size, loc_classes, width, height = list(localisation.shape)
             loc_images = []
             label_loc_images = []
@@ -184,8 +184,8 @@ class CSLNet(nn.Module):
                 loc_image = resize(loc_image, (ori_img.shape[0], ori_img.shape[1]))
                 loc_images.append(loc_image)
                 label_loc_images.append(label_loc_image)
-      
-            plotOverlayImages(ori_img, seg_image, loc_images, label_loc_images, r'../out/' + str(i) + '.png')        
+
+            plot_overlay_images(ori_img, seg_image, loc_images, label_loc_images, r'../out/' + str(i) + '.png')
 
     def visualize(self, dataset, device='cpu', batch_size=2):
         loader = train_val_dataset(dataset, validation_split=0, train_batch_size=batch_size,
@@ -221,7 +221,7 @@ class CSLNet(nn.Module):
                 fig.add_subplot(3, 4, fig_counter)
                 fig_counter += 1
                 for row in localisation[0, loc_class_, :, :]:
-                    #for col in row:
+                    # for col in row:
                     print(np.max(row))
                     print('\n')
                 print('========')
@@ -356,20 +356,21 @@ class Training:
             else:
                 raise ValueError
             segmentation_loss = segmentation_loss_function(output_segmentation, target_segmentation)
-            
+
             # ==== huxi loss ====
-            weights = torch.where(target_localisation > 0.0001, torch.full_like(target_localisation, 5), torch.full_like(target_localisation, 1))
-            all_mse = (output_localisation - target_localisation)**2
+            weights = torch.where(target_localisation > 0.0001, torch.full_like(target_localisation, 5),
+                                  torch.full_like(target_localisation, 1))
+            all_mse = (output_localisation - target_localisation) ** 2
 
             weighted_mse = all_mse * weights
-            localisation_loss = weighted_mse.sum()/ (
-                    localisation_classes * batch_size) # or sum over whatever dimensions
-            #print(localisation_loss.shape)
+            localisation_loss = weighted_mse.sum() / (
+                    localisation_classes * batch_size)  # or sum over whatever dimensions
+            # print(localisation_loss.shape)
             # localization
-            #localisation_loss_function = nn.MSELoss(reduction='sum')
-            #localisation_loss = localisation_loss_function(output_localisation, target_localisation) / (
+            # localisation_loss_function = nn.MSELoss(reduction='sum')
+            # localisation_loss = localisation_loss_function(output_localisation, target_localisation) / (
             #        localisation_classes * batch_size)
-            #return 0 + (self.lambdah * localisation_loss), 0, localisation_loss.item()
+            # return 0 + (self.lambdah * localisation_loss), 0, localisation_loss.item()
 
             return segmentation_loss + (
                     self.lambdah * localisation_loss), segmentation_loss.item(), localisation_loss.item()

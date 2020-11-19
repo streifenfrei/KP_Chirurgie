@@ -8,19 +8,23 @@ import torch
 import numpy as np
 
 from combined.modeling.heads.csl_decoder import Decoder
-from dataLoader import max_gaussian_help
-from evaluate import DiceCoefficient, get_threshold_score
+from csl.data_loader import max_gaussian_help
+from util.evaluate import DiceCoefficient, get_threshold_score
+
 CSL_HEAD_REGISTRY = Registry("CSL_HEAD")
+
 
 @CSL_HEAD_REGISTRY.register()
 class CSLHead(nn.Module):
     """
-    Head module for generating aligned segmentation masks and localisation heatmaps, given aligned feature maps
+    Head module for generating aligned segmentation masks and localisation heatmaps, given aligned feature masks
     """
+
     def _segmentation_loss(self, pred, target_bool):
         pred = pred.squeeze()
         target = target_bool.double()
         loss = torch.nn.functional.binary_cross_entropy_with_logits(pred, target)
+
         # evaluation
         try:
             storage = get_event_storage()
@@ -46,7 +50,8 @@ class CSLHead(nn.Module):
         target = target.to(pred.device)
         eps = 0.00001
         if "weighted" in self.loss_type:
-            weights = torch.where(target > eps, torch.full_like(target, self.loc_weight), torch.full_like(target, 1.0 - self.loc_weight))
+            weights = torch.where(target > eps, torch.full_like(target, self.loc_weight),
+                                  torch.full_like(target, 1.0 - self.loc_weight))
         if self.loss_type == "plain_mse":
             mse = torch.nn.MSELoss()
             loss = mse(pred, target)
@@ -88,7 +93,7 @@ class CSLHead(nn.Module):
             epsilon = 10e-6
             precision = float(true_positive) / (true_positive + false_positive + epsilon)
             recall = float(true_positive) / (true_positive + false_negative + epsilon)
-            f1 = 2 / ((1/(recall + epsilon)) + (1/(precision + epsilon)))
+            f1 = 2 / ((1 / (recall + epsilon)) + (1 / (precision + epsilon)))
             storage.put_scalar("csl_localisation/precision", precision)
             storage.put_scalar("csl_localisation/recall", recall)
             storage.put_scalar("csl_localisation/f1", f1)
@@ -101,11 +106,11 @@ class CSLHead(nn.Module):
         super().__init__()
         self.hm_preprocessing_type = cfg.MODEL.CSL_HEAD.HM_PREPROCESSING
         self.lambdaa = cfg.MODEL.CSL_HEAD.LAMBDA
-        assert(self.lambdaa >= 0 and self.lambdaa <= 1)
+        assert (0 <= self.lambdaa <= 1)
         self.sigma = cfg.MODEL.CSL_HEAD.SIGMA
         self.epsilon = cfg.MODEL.CSL_HEAD.EVALUATION.EPSILON
         self.loc_weight = cfg.MODEL.CSL_HEAD.LOC_WEIGHT
-        assert(self.loc_weight >= 0 and self.loc_weight <= 1)
+        assert (0 <= self.loc_weight <= 1)
         self.threshold_list = cfg.MODEL.CSL_HEAD.EVALUATION.THRESHOLD_SCORE_LIST
         self.loss_type = cfg.MODEL.CSL_HEAD.LOSS_TYPE
         self.device = cfg.MODEL.DEVICE
@@ -117,26 +122,38 @@ class CSLHead(nn.Module):
                                          spatial_scale=1, sampling_ratio=0)
         elif self.hm_preprocessing_type == "direct":
             self.hm_direct_padding = 10
-        self.decoder = nn.ModuleList([Decoder(localisation_classes).to(self.device) for i in range(segmentation_classes)])
+        # one decoder for each instance class
+        self.decoder = nn.ModuleList(
+            [Decoder(localisation_classes).to(self.device) for i in range(segmentation_classes)])
 
     def _preprocess_hm_align(self, instances):
-        calculated_heatmaps = {}
+        """
+        Generates the ground truth heatmaps by generating them for the whole image and then cutting them out using
+        the ROIAlignV2 algorithm (just like the feature masks)
+        Args:
+            instances: Instances object containing the ground truth csl keypoints in .gt_keypoints and the ground truth
+                proposal boxes in .proposal_boxes
+        Returns:
+            Tensor: (N, L, Hm, Hw) where N is the number of instances, L the number of localisation classes.
+        """
+        calculated_heatmaps = {}  # save already calculated heatmaps
         heatmaps = []
+        # for each instance
         for keypoints_per_instance, box in zip(instances.gt_keypoints.keypoints, instances.proposal_boxes):
             heatmaps_per_instance = []
-            for keypoints_per_class in keypoints_per_instance:
+            for keypoints_per_class in keypoints_per_instance:  # for each keypoint class
                 kstring = str(keypoints_per_class)
                 if kstring in calculated_heatmaps:
-                    heatmap = calculated_heatmaps[kstring]
+                    heatmap = calculated_heatmaps[kstring]  # retrieve heatmap if already generated for that image/class
                 else:
                     heatmap = np.zeros((instances.image_size[1], instances.image_size[0]))
-                    if keypoints_per_class:
+                    if keypoints_per_class:  # if keypoints exist for that class
                         for x, y in keypoints_per_class:
-                            heatmap[x, y] = 1
-                        heatmap = max_gaussian_help(heatmap, self.sigma, 1)
+                            heatmap[x, y] = 1  # set keypoints to 1
+                        heatmap = max_gaussian_help(heatmap, self.sigma, 1)  # apply gaussian kernels
                         heatmap = heatmap * 2 * np.pi * (self.sigma ** 2)  # normalize
                         heatmap = np.clip(heatmap, 0.0, 1.0)  # make sure that max value is 1
-                        calculated_heatmaps[kstring] = heatmap
+                        calculated_heatmaps[kstring] = heatmap  # save heatmap
                     else:
                         heatmap = np.expand_dims(heatmap, axis=2)
                 heatmaps_per_instance.append(torch.from_numpy(heatmap.transpose((2, 1, 0))))
@@ -146,31 +163,45 @@ class CSLHead(nn.Module):
             box = convert_boxes_to_pooler_format([Boxes(box.unsqueeze(0))]).cpu()
             heatmaps_per_instance = torch.cat(heatmaps_per_instance).unsqueeze(0).float()
 
-            heatmaps.append(self.csl_hm_align(heatmaps_per_instance, box))
+            heatmaps.append(self.csl_hm_align(heatmaps_per_instance, box))  # crop and align ROI
         return torch.cat(heatmaps)
 
     def _preprocess_hm_direct(self, instances):
+        """
+        Generates the ground truth heatmaps by scaling and aligning the keypoints to the mask size and applying gaussian
+        kernels afterwards. This is obviously less precise as the distortion after aligning the ROIs is not considered
+        when applying the gaussian kernels. It was implemented mainly for debugging reasons.
+        Args:
+            instances: Instances object containing the ground truth csl keypoints in .gt_keypoints and the ground truth
+                proposal boxes in .proposal_boxes
+        Returns:
+            Tensor: (N, L, Hm, Hw) where N is the number of instances, L the number of localisation classes.
+        """
+        # add padding so we get information of keypoints which are slightly out of the ROI
         padded_size = self.output_resolution + 2 * self.hm_direct_padding
         heatmaps = []
+        # for each instance
         for keypoints_per_instance, box in zip(instances.gt_keypoints.keypoints, instances.proposal_boxes):
             w, h = box[2] - box[0], box[3] - box[1]
+            #  calculate ratio by which the keypoints are scaled
             ratio_h = (self.output_resolution / max(h, 0.1)).item()
             ratio_w = (self.output_resolution / max(w, 0.1)).item()
             heatmaps_per_instance = []
-            for keypoints_per_class in keypoints_per_instance:
+            for keypoints_per_class in keypoints_per_instance:  # for each keypoint class
                 heatmap = np.zeros((padded_size, padded_size))
-                for keypoint in keypoints_per_class:
-                    # fit keypoints to squared mask (if in box)
+                for keypoint in keypoints_per_class:  # for each keypoint
+                    # fit keypoint to squared mask
                     keypoint = (round((keypoint[0] - box[0].item()) * ratio_w) + self.hm_direct_padding,
                                 round((keypoint[1] - box[1].item()) * ratio_h) + self.hm_direct_padding)
                     x, y = keypoint
                     if (0 <= x < padded_size) and (0 <= y < padded_size):
+                        # set keypoint to 1 if it is in the box
                         heatmap[keypoint[0], keypoint[1]] = 1
 
-                heatmap = max_gaussian_help(heatmap, self.sigma, 1)
+                heatmap = max_gaussian_help(heatmap, self.sigma, 1)  # apply gaussian kernels
                 heatmap = heatmap * 2 * np.pi * (self.sigma ** 2)  # normalize
-                heatmap = heatmap[self.hm_direct_padding:padded_size-self.hm_direct_padding,
-                                  self.hm_direct_padding:padded_size-self.hm_direct_padding]
+                heatmap = heatmap[self.hm_direct_padding:padded_size - self.hm_direct_padding,
+                          self.hm_direct_padding:padded_size - self.hm_direct_padding]  # cut off the padding
                 heatmaps_per_instance.append(torch.from_numpy(heatmap).squeeze())
             heatmaps_per_instance = torch.stack(heatmaps_per_instance).float()
             heatmaps.append(heatmaps_per_instance)
@@ -196,14 +227,14 @@ class CSLHead(nn.Module):
 
     def _forward_per_instances(self, x, instances):
         output = []
-        x = [i.split(1, 0) for i in x]
+        x = [i.split(1, 0) for i in x]  # stacked feature masks across all images
         box = 0
-        for instances_per_image in instances:
+        for instances_per_image in instances:  # for every image
             segs = []
             locs = []
             classes = instances_per_image.gt_classes.tolist() if self.training \
                 else instances_per_image.pred_classes.tolist()
-            for cls in classes:
+            for cls in classes:  # for every instance in image
                 features = [i[box] for i in x]
                 box += 1
                 seg, loc = self.decoder[cls](features)
@@ -216,7 +247,7 @@ class CSLHead(nn.Module):
         return output
 
     def forward(self, x, instances):
-        x = self._forward_per_instances(x, instances)
+        x = self._forward_per_instances(x, instances)  # forward all instances
         if self.training:
             seg = torch.cat([i[0] for i in x])
             loc = torch.cat([i[1] for i in x])
@@ -225,9 +256,9 @@ class CSLHead(nn.Module):
             for instances_per_image in instances:
                 gt_masks_per_image = instances_per_image.gt_masks.crop_and_resize(
                     instances_per_image.proposal_boxes.tensor, seg.size(2)
-                ).to(device=seg.device)
+                ).to(device=seg.device)  # crop and align ground truth segmentation masks
                 gt_masks.append(gt_masks_per_image)
-                current_heatmaps = self._preprocess_gt_heatmaps(instances_per_image)
+                current_heatmaps = self._preprocess_gt_heatmaps(instances_per_image)  # generate ground truth heatmaps
                 gt_locs.append(current_heatmaps)
             gt_masks = torch.cat(gt_masks, dim=0)
             gt_locs = torch.cat(gt_locs, dim=0)

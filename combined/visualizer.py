@@ -1,10 +1,6 @@
-from detectron2.utils.visualizer import Visualizer, GenericMask
-import numpy as np
+from detectron2.utils.visualizer import Visualizer
 
-# for visualising the local result, by huxi
 from networkx.drawing.tests.test_pylab import mpl
-
-from evaluate import applyThreshold, non_max_suppression
 
 
 class CSLVisualizer(Visualizer):
@@ -12,6 +8,7 @@ class CSLVisualizer(Visualizer):
     Custom visualizer for drawing nice keypoints onto the image
     """
     def draw_instance_predictions(self, predictions):
+        # remove/comment next line to only visualize the kepoints
         super().draw_instance_predictions(predictions)
         keypoint_colors = self.metadata.get("keypoint_colors")
         if len(predictions) > 0:
