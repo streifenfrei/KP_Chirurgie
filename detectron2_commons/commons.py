@@ -51,7 +51,10 @@ def get_instrument_dicts(img_dir: str,
 def register_dataset_and_metadata(path_to_data: str,
                                   classes_list: List[str]) -> detectron2.data.catalog.Metadata:
     for d in ["train", "val"]:
-        DatasetCatalog.register("instruments_" + d, lambda d=d: get_instrument_dicts(path_to_data + d))
+        try:
+            DatasetCatalog.register("instruments_" + d, lambda d=d: get_instrument_dicts(path_to_data + d))
+        except AssertionError:
+            pass
         MetadataCatalog.get("instruments_" + d).set(thing_classes=classes_list)
     instruments_metadata = MetadataCatalog.get("instruments_train")
     return instruments_metadata
