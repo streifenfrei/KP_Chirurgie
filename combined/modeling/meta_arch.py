@@ -4,7 +4,9 @@ import numpy as np
 from detectron2.config import configurable
 from torch import nn
 from detectron2.modeling import GeneralizedRCNN, META_ARCH_REGISTRY, Backbone
+from torch.autograd import profiler
 
+from combined.profiling.putil import profiling
 from util.evaluate import apply_threshold, non_max_suppression
 
 
@@ -25,6 +27,8 @@ class RCNNAndCSL(GeneralizedRCNN):
         super().__init__(**kwargs)
         self.hm_threshold = hm_threshold
         self.keypoint_limits = keypoint_limits
+        self.backbone.forward = profiling(self.backbone.forward, "backbone")
+        self.proposal_generator.forward = profiling(self.proposal_generator.forward, "proposal_generator")
 
     @classmethod
     def from_config(cls, cfg):
@@ -36,7 +40,8 @@ class RCNNAndCSL(GeneralizedRCNN):
     def inference(self, batched_inputs, detected_instances=None, do_postprocess=True):
         results = super().inference(batched_inputs, detected_instances, do_postprocess)
         if do_postprocess:
-            return self._postprocess_csl(results)
+            with profiler.record_function("csl_postprocess"):
+                return self._postprocess_csl(results)
         else:
             return results
 

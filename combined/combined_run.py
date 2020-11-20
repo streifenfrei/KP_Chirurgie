@@ -33,9 +33,10 @@ def training(cfg):
 def inference(metadata,
               path_to_data,
               cfg) -> None:
-    cfg.MODEL.DEVICE = 'cuda' if torch.cuda.is_available() else 'cpu'
-    predictor = DefaultPredictor(cfg)
-    dataset_dicts = get_instrument_dicts(f"{path_to_data}/val")
+    with profiler.record_function("initialisation"):
+        cfg.MODEL.DEVICE = 'cuda' if torch.cuda.is_available() else 'cpu'
+        predictor = DefaultPredictor(cfg)
+        dataset_dicts = get_instrument_dicts(f"{path_to_data}/val")
     for d in random.sample(dataset_dicts, 1):
         im = cv2.imread(d["file_name"])
         outputs = predictor(im)

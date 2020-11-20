@@ -6,6 +6,7 @@ from detectron2.modeling import ROI_HEADS_REGISTRY, StandardROIHeads
 from detectron2.modeling.roi_heads import select_foreground_proposals
 from detectron2.structures import ImageList, Instances
 from torch import nn
+from torch.autograd import profiler
 
 from combined.modeling.heads.csl_head import build_csl_head
 from combined.modeling.heads.csl_pooler import CSLPooler
@@ -93,13 +94,18 @@ class CSLROIHeads(StandardROIHeads):
             out_instances.append(keep_instances)
         return out_instances
 
+    def _forward_box(self, *args, **kwargs):
+        with profiler.record_function("box_prediction"):
+            return super()._forward_box(*args, **kwargs)
+
     # this method is only called in inference (see the super class)
     def forward_with_given_boxes(
             self, features: Dict[str, torch.Tensor], instances: List[Instances]
     ) -> List[Instances]:
         instances = super().forward_with_given_boxes(features, instances)
         instances = CSLROIHeads.remove_instances_over_limit(instances)
-        instances = self._forward_csl(features, instances)
+        with profiler.record_function("csl_inference"):
+            instances = self._forward_csl(features, instances)
         return instances
 
     def _forward_csl(
