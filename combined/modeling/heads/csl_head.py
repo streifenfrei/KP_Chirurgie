@@ -1,3 +1,4 @@
+import typing
 from detectron2.layers import ROIAlign
 from detectron2.modeling.poolers import convert_boxes_to_pooler_format
 from detectron2.structures import Boxes
@@ -6,6 +7,7 @@ from fvcore.common.registry import Registry
 from torch import nn
 import torch
 import numpy as np
+from torch.autograd import profiler
 
 from combined.modeling.heads.csl_decoder import Decoder
 from csl.data_loader import max_gaussian_help
@@ -122,9 +124,8 @@ class CSLHead(nn.Module):
                                          spatial_scale=1, sampling_ratio=0)
         elif self.hm_preprocessing_type == "direct":
             self.hm_direct_padding = 10
-        # one decoder for each instance class
-        self.decoder = nn.ModuleList(
-            [Decoder(localisation_classes).to(self.device) for i in range(segmentation_classes)])
+        self.decoder = torch.jit.script(Decoder(segmentation_classes, localisation_classes, self.device)) \
+            if self.device == "cpu" else Decoder(segmentation_classes, localisation_classes, self.device)
 
     def _preprocess_hm_align(self, instances):
         """
@@ -226,24 +227,14 @@ class CSLHead(nn.Module):
             raise ValueError
 
     def _forward_per_instances(self, x, instances):
-        output = []
-        x = [i.split(1, 0) for i in x]  # stacked feature masks across all images
-        box = 0
+        features = [i.split(1, 0) for i in x]  # stacked feature masks across all images
+        classes_lists = []
         for instances_per_image in instances:  # for every image
-            segs = []
-            locs = []
             classes = instances_per_image.gt_classes.tolist() if self.training \
                 else instances_per_image.pred_classes.tolist()
-            for cls in classes:  # for every instance in image
-                features = [i[box] for i in x]
-                box += 1
-                seg, loc = self.decoder[cls](features)
-                segs.append(seg)
-                locs.append(loc)
-            if segs and locs:
-                seg = torch.cat(segs)
-                loc = torch.cat(locs)
-                output.append((seg, loc))
+            classes_lists.append(classes)
+
+        output = self.decoder(features, classes_lists)
         return output
 
     def forward(self, x, instances):

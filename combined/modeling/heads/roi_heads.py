@@ -104,8 +104,7 @@ class CSLROIHeads(StandardROIHeads):
     ) -> List[Instances]:
         instances = super().forward_with_given_boxes(features, instances)
         instances = CSLROIHeads.remove_instances_over_limit(instances)
-        with profiler.record_function("csl_inference"):
-            instances = self._forward_csl(features, instances)
+        instances = self._forward_csl(features, instances)
         return instances
 
     def _forward_csl(
@@ -117,5 +116,8 @@ class CSLROIHeads(StandardROIHeads):
             boxes = [x.proposal_boxes for x in instances]
         else:
             boxes = [x.pred_boxes for x in instances]
-        feature_masks = self.csl_pooler(features, boxes)  # crop and align the feature masks
-        return self.csl_head(feature_masks, instances)
+        with profiler.record_function("csl_pooler"):
+            feature_masks = self.csl_pooler(features, boxes)  # crop and align the feature masks
+        with profiler.record_function("csl_head"):
+            out = self.csl_head(feature_masks, instances)
+        return out

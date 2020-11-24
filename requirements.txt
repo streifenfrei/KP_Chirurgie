@@ -1,12 +1,12 @@
 albumentations~=0.5.0
 numpy~=1.19.1
-torch==1.4.0
+torch==1.7.0
 opencv-python~=4.4.0.44
 torchvision~=0.7.0
 matplotlib~=3.3.2
 PyYAML==5.1
-detectron2==0.1.3 -f https://dl.fbaipublicfiles.com/detectron2/wheels/cu101/torch1.5/index.html
-git+https://github.com/cocodataset/cocoapi.git#subdirectory=PythonAPI
+python -m pip install detectron2 -f \
+  https://dl.fbaipublicfiles.com/detectron2/wheels/cpu/torch1.7/index.html
 tensorboard
 scikit-image~=0.17.2
 scipy~=1.5.3
