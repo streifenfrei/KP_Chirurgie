@@ -6,6 +6,7 @@ import torch.autograd.profiler as profiler
 from detectron2.engine import DefaultPredictor
 
 from combined.combined_run import load_config
+from combined.trainer import Trainer
 from detectron2_commons.commons import register_dataset_and_metadata, get_instrument_dicts
 
 
@@ -15,9 +16,11 @@ def inference(path_to_data, cfg):
     dataset_dict = get_instrument_dicts(f"{path_to_data}/val")[0]
     im = cv2.imread(dataset_dict["file_name"])
 
+    model = Trainer.build_model(cfg)
+    res = Trainer.test(cfg, model)
     # profiling
     with profiler.profile(record_shapes=True) as prof:
-        out = predictor(im)
+        predictor(im)
     print(prof.key_averages(group_by_input_shape=True).table(sort_by="cpu_time_total", row_limit=100))
     prof.export_chrome_trace("trace.json")
 

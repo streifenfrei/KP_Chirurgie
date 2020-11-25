@@ -78,6 +78,7 @@ class RCNNAndCSL(GeneralizedRCNN):
                             keypoints_per_class.append((x, y))
                         keypoints_per_instance.append(keypoints_per_class)
                     keypoints.append(keypoints_per_instance)
+                instances_per_image.pred_hm = instances_per_image.pred_loc
                 instances_per_image.pred_loc = keypoints  # update instance's .pred_loc field with new keypoint list
                 results_per_image["instances"] = instances_per_image
         return results

@@ -7,6 +7,7 @@ from detectron2.data import detection_utils as utils
 from detectron2.data.transforms import apply_transform_gens, ResizeShortestEdge
 from detectron2.engine import DefaultTrainer
 
+from combined.evaluator import Evaluator
 from combined.structures.keypoints import CSLKeypoints
 import numpy as np
 
@@ -80,7 +81,8 @@ class Trainer(DefaultTrainer):
 
     @classmethod
     def build_evaluator(cls, cfg, dataset_name):
-        pass
+        if dataset_name == "instruments_val":
+            return Evaluator()
 
     @classmethod
     def build_test_loader(cls, cfg: CfgNode, dataset_name):
