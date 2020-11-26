@@ -56,5 +56,6 @@ def register_dataset_and_metadata(path_to_data: str,
         except AssertionError:
             pass
         MetadataCatalog.get("instruments_" + d).set(thing_classes=classes_list)
+        MetadataCatalog.get("instruments_" + d).set(json_file=path_to_data + d + "/dataset_registration_detectron2.json")
     instruments_metadata = MetadataCatalog.get("instruments_train")
     return instruments_metadata

@@ -124,8 +124,8 @@ class CSLHead(nn.Module):
                                          spatial_scale=1, sampling_ratio=0)
         elif self.hm_preprocessing_type == "direct":
             self.hm_direct_padding = 10
-        self.decoder = torch.jit.script(Decoder(segmentation_classes, localisation_classes, self.device)) \
-            if self.device == "cpu" else Decoder(segmentation_classes, localisation_classes, self.device)
+        self.decoder = nn.ModuleList(
+            [Decoder(localisation_classes).to(self.device) for i in range(segmentation_classes)])
 
     def _preprocess_hm_align(self, instances):
         """
@@ -227,14 +227,25 @@ class CSLHead(nn.Module):
             raise ValueError
 
     def _forward_per_instances(self, x, instances):
-        features = [i.split(1, 0) for i in x]  # stacked feature masks across all images
-        classes_lists = []
+        output = []
+        x = [i.split(1, 0) for i in x]  # stacked feature masks across all images
+        box = 0
         for instances_per_image in instances:  # for every image
+            segs = []
+            locs = []
             classes = instances_per_image.gt_classes.tolist() if self.training \
                 else instances_per_image.pred_classes.tolist()
-            classes_lists.append(classes)
-
-        output = self.decoder(features, classes_lists)
+            for cls in classes:  # for every instance in image
+                features = [i[box] for i in x]
+                box += 1
+                with profiler.record_function("instance_inference"):
+                    seg, loc = self.decoder[cls](features)
+                segs.append(seg)
+                locs.append(loc)
+            if segs and locs:
+                seg = torch.cat(segs)
+                loc = torch.cat(locs)
+                output.append((seg, loc))
         return output
 
     def forward(self, x, instances):

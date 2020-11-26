@@ -1,6 +1,7 @@
 import torch
 import torch.nn as nn
 import numpy as np
+from torch.autograd import profiler
 
 
 def conv5x5(in_planes, out_planes, stride=1, groups=1, dilation=1, padding=2):
@@ -23,11 +24,11 @@ class DecoderBlock(nn.Module):
     These blocks are used in the CSL paper (https://arxiv.org/abs/1703.10701)
     """
     def __init__(self, in_channels, out_channels):
-        super().__init__()
+        super(DecoderBlock, self).__init__()
         self.in_channels = in_channels
         self.indices = None
 
-        self.unpooling = nn.ConvTranspose2d(in_channels, in_channels, kernel_size=2, stride=2)
+        self.unpooling = nn.MaxUnpool2d(kernel_size=2)
         self.conv1 = conv5x5(in_channels, out_channels)
         self.relu1 = nn.ReLU(inplace=True)
         self.proj = conv5x5(in_channels, out_channels)
@@ -35,7 +36,15 @@ class DecoderBlock(nn.Module):
         self.relu2 = nn.ReLU(inplace=True)
 
     def forward(self, x):
-        proj = x = self.unpooling(x)
+        # regenerate indices if batch size changes
+        with profiler.record_function("construct_indices"):
+            if self.indices is None or list(self.indices.shape) != list(x.shape):
+                copy = torch.clone(x).cpu().detach()
+                self.indices = construct_indices(copy)
+                self.indices = self.indices.to(x.device)
+                self.indices.requires_grad = False
+
+        proj = x = self.unpooling(x, self.indices)
 
         x = self.conv1(x)
         x = self.relu1(x)
@@ -44,6 +53,21 @@ class DecoderBlock(nn.Module):
         x.add(proj)
         x = self.relu2(x)
         return x
+
+
+def construct_indices(after_pooling):
+    """
+    Generates an indices tensor required by the MaxUnpool2d module. The unpooling is done by simply mapping each input
+    value to the top left corner of a 2x2 kernel.
+    """
+    our_indices = np.zeros_like(after_pooling, dtype=np.int64)
+    batch_num, channel_num, row_num, col_num = after_pooling.shape
+    for batch_id in range(batch_num):
+        for channel_id in range(channel_num):
+            for row_id in range(row_num):
+                for col_id in range(col_num):
+                    our_indices[batch_id, channel_id, row_id, col_id] = col_num * 2 * 2 * row_id + 2 * col_id
+    return torch.from_numpy(our_indices)
 
 
 class Bottleneck(nn.Module):

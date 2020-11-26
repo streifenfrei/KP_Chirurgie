@@ -82,7 +82,7 @@ class Trainer(DefaultTrainer):
     @classmethod
     def build_evaluator(cls, cfg, dataset_name):
         if dataset_name == "instruments_val":
-            return Evaluator()
+            return Evaluator(dataset_name)
 
     @classmethod
     def build_test_loader(cls, cfg: CfgNode, dataset_name):

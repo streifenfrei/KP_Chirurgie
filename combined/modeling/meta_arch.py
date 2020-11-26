@@ -6,7 +6,7 @@ from torch import nn
 from detectron2.modeling import GeneralizedRCNN, META_ARCH_REGISTRY, Backbone
 from torch.autograd import profiler
 
-from combined.profiling.putil import profiling
+from combined.profile.putil import profiling
 from util.evaluate import apply_threshold, non_max_suppression
 
 
