@@ -23,7 +23,8 @@ VISUALIZER:
   CLASS_NAMES: ["scissors", "needle_holder", "grasper"]
   INSTANCE_COLORS: [[0, 0, 255], [255, 255, 255], [255, 0, 0]]
   KEYPOINT_COLORS: ['firebrick', 'midnightblue', 'sandybrown', 'linen']
-
+TEST:
+  KEYPOINT_OKS_SIGMAS: [.5, .5, .5, .5, .5, .5, .5, .5]
 DATASETS:
   TRAIN: ("instruments_train",)
   TEST: ("instruments_val",)

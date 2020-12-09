@@ -1,41 +1,29 @@
-import contextlib
-import io
-import os
+from detectron2.evaluation import COCOEvaluator
+import torch
+import numpy as np
 
-from detectron2.data import MetadataCatalog
-from detectron2.data.datasets.coco import convert_to_coco_json
-from detectron2.evaluation import DatasetEvaluator
-from detectron2.utils.file_io import PathManager
-from pycocotools.coco import COCO
+class Evaluator(COCOEvaluator):
 
-
-class Evaluator(DatasetEvaluator):
-
-    def __init__(self, dataset_name):
-        self._metadata = MetadataCatalog.get(dataset_name)
-        json_file = PathManager.get_local_path(self._metadata.json_file)
-        with contextlib.redirect_stdout(io.StringIO()):
-            self._coco_api = COCO(json_file)
-        self._predictions = []
-
-    def reset(self):
-        self._predictions = []
+    def __init__(self, dataset_name, distributed=True, tasks=("bbox", "segm", "keypoints"), **kwargs):
+        super().__init__(dataset_name, distributed=distributed, tasks=tasks, use_fast_impl=False, **kwargs)
 
     def process(self, inputs, outputs):
-        for input, output in zip(inputs, outputs):
-            prediction = {"image_id": input["image_id"]}
-            if "instances" in output:
-                prediction["instances"] = output["instances"].to("cpu")
-            if "proposals" in output:
-                prediction["proposals"] = output["proposals"].to("cpu")
-            self._predictions.append(prediction)
+        instances = outputs[0]["instances"]
+        all_keypoints = []
+        for keypoints_per_instance in instances.pred_keypoints:
+            new_keys = []
+            for keypoints_per_class in keypoints_per_instance:
+                keypoints_per_class.sort(key=lambda x: np.linalg.norm(x))
+                for i in range(2):
+                    keypoint = keypoints_per_class[i] if i < len(keypoints_per_class) else None
+                    if keypoint is None:
+                        new_keys.append(torch.Tensor([0.0, 0.0, 0.1]))
+                    else:
+                        new_keys.append(torch.Tensor([keypoint[0], keypoint[1], 1.0]))
+            all_keypoints.append(torch.stack(new_keys))
+        instances.pred_keypoints = torch.stack(all_keypoints)
+        super().process(inputs, outputs)
 
-    def evaluate(self):
-        self._eval_segmentation()
-        return {}
+    def evaluate(self, img_ids=None):
+        return super().evaluate(img_ids=img_ids)
 
-    def _eval_segmentation(self):
-        for prediction_dict in self._predictions:
-            ann_ids = self._coco_api.getAnnIds(imgIds=prediction_dict["image_id"])
-            anno = self._coco_api.loadAnns(ann_ids)
-            print(anno)

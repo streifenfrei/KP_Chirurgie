@@ -6,6 +6,7 @@ from detectron2.data import build_detection_test_loader, build_detection_train_l
 from detectron2.data import detection_utils as utils
 from detectron2.data.transforms import apply_transform_gens, ResizeShortestEdge
 from detectron2.engine import DefaultTrainer
+from detectron2.evaluation import COCOEvaluator
 
 from combined.evaluator import Evaluator
 from combined.structures.keypoints import CSLKeypoints
@@ -82,7 +83,7 @@ class Trainer(DefaultTrainer):
     @classmethod
     def build_evaluator(cls, cfg, dataset_name):
         if dataset_name == "instruments_val":
-            return Evaluator(dataset_name)
+            return Evaluator(dataset_name, output_dir=cfg.OUTPUT_DIR, kpt_oks_sigmas=cfg.TEST.KEYPOINT_OKS_SIGMAS)
 
     @classmethod
     def build_test_loader(cls, cfg: CfgNode, dataset_name):

@@ -34,13 +34,27 @@ def get_instrument_dicts(img_dir: str,
             py = anno["all_points_y"]
             poly = [(x + 0.5, y + 0.5) for x, y in zip(px, py)]
             poly = [p for x in poly for p in x]
+            keypoints = []
+            for keypoint_class in anno['keypoints_csl'].values():
+                keypoint_class.sort(key=lambda x: np.linalg.norm(x))
+                for i in range(2):
+                    key = keypoint_class[i] if i < len(keypoint_class) else None
+                    if key is None:
+                        keypoints.append(0.0)
+                        keypoints.append(0.0)
+                        keypoints.append(0)
+                    else:
+                        keypoints.append(key[0])
+                        keypoints.append(key[1])
+                        keypoints.append(2)
 
             obj = {
                 "bbox": [np.min(px), np.min(py), np.max(px), np.max(py)],
                 "bbox_mode": BoxMode.XYXY_ABS,
                 "segmentation": [poly],
                 "category_id": anno['category_id'],
-                "keypoints_csl": anno['keypoints_csl']
+                "keypoints_csl": anno['keypoints_csl'],
+                "keypoints": keypoints
             }
             objs.append(obj)
         record["annotations"] = objs
@@ -56,6 +70,5 @@ def register_dataset_and_metadata(path_to_data: str,
         except AssertionError:
             pass
         MetadataCatalog.get("instruments_" + d).set(thing_classes=classes_list)
-        MetadataCatalog.get("instruments_" + d).set(json_file=path_to_data + d + "/dataset_registration_detectron2.json")
     instruments_metadata = MetadataCatalog.get("instruments_train")
     return instruments_metadata
