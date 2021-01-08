@@ -76,7 +76,7 @@ def inference(path_to_data, cfg, output):
             os.system("gprof2dot -f pstats '{0}' | dot -Tpng -o '{1}'".format(cprofile_file, os.path.join(output, "calltree.png")))
             # pyprof2calltree
             convert(prof.getstats(), os.path.join(output, "calltree.kgrind"))
-    except Exception as e:
+    except (Exception, StopIteration) as e:
         shutil.rmtree(output_root)
         raise e
 
