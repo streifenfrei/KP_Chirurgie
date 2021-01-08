@@ -44,8 +44,9 @@ def inference(path_to_data, cfg, output):
         # EVALUATION
         with open(os.path.join(output_root, 'evaluation.json'), 'w') as eval_file:
             model = Trainer.build_model(cfg)
+            model.load_state_dict(torch.load(cfg.MODEL.WEIGHTS)["model"])
             eval_file.write(json.dumps(Trainer.test(cfg, model), indent=4))
-
+        return
         # PROFILING
         devices = ["cpu"]
         if torch.cuda.is_available():
