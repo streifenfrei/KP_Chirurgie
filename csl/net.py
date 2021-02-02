@@ -46,21 +46,21 @@ class CSLNet(nn.Module):
 
         layers = self._res_net_layers[encoder]
 
-        self.encoding_layer1 = self._make_layer(256, sampling=self._Sampling.none_bottleneck,
+        self.encoding_layer1 = self._make_layer(128, sampling=self._Sampling.none_bottleneck,
                                                 bottleneck_blocks=layers[0])
-        self.encoding_layer2 = self._make_layer(512, sampling=self._Sampling.down, bottleneck_blocks=layers[1])
-        self.encoding_layer3 = self._make_layer(1024, sampling=self._Sampling.down, bottleneck_blocks=layers[2])
-        self.encoding_layer4 = self._make_layer(2048, sampling=self._Sampling.down, bottleneck_blocks=layers[3])
+        self.encoding_layer2 = self._make_layer(256, sampling=self._Sampling.down, bottleneck_blocks=layers[1])
+        self.encoding_layer3 = self._make_layer(512, sampling=self._Sampling.down, bottleneck_blocks=layers[2])
+        self.encoding_layer4 = self._make_layer(1024, sampling=self._Sampling.down, bottleneck_blocks=layers[3])
 
-        self.bottleneck_layer = self._make_layer(1024, sampling=self._Sampling.none_norm)
+        self.bottleneck_layer = self._make_layer(512, sampling=self._Sampling.none_norm)
 
-        self.decoding_layer1_1 = self._make_layer(512, sampling=self._Sampling.up, update_planes=False)
-        self.decoding_layer1_2 = self._make_layer(512, sampling=self._Sampling.none_norm)
-        self.decoding_layer2_1 = self._make_layer(256, sampling=self._Sampling.up, update_planes=False)
-        self.decoding_layer2_2 = self._make_layer(256, sampling=self._Sampling.none_norm)
-        self.decoding_layer3_1 = self._make_layer(128, sampling=self._Sampling.up, update_planes=False)
-        self.decoding_layer3_2 = self._make_layer(128, sampling=self._Sampling.none_norm)
-        self.decoding_layer4 = self._make_layer(64, sampling=self._Sampling.up)
+        self.decoding_layer1_1 = self._make_layer(256, sampling=self._Sampling.up, update_planes=False)
+        self.decoding_layer1_2 = self._make_layer(256, sampling=self._Sampling.none_norm)
+        self.decoding_layer2_1 = self._make_layer(128, sampling=self._Sampling.up, update_planes=False)
+        self.decoding_layer2_2 = self._make_layer(128, sampling=self._Sampling.none_norm)
+        self.decoding_layer3_1 = self._make_layer(64, sampling=self._Sampling.up, update_planes=False)
+        self.decoding_layer3_2 = self._make_layer(64, sampling=self._Sampling.none_norm)
+        self.decoding_layer4 = self._make_layer(32, sampling=self._Sampling.up)
 
         self.segmentation_layer = conv3x3(self.inplanes, 1)  # indeed remove the relu
         self.pre_localisation_layer = self._make_layer(32, sampling=self._Sampling.none_relu)
@@ -143,7 +143,6 @@ class CSLNet(nn.Module):
                 imags_label = resize(imags_label, (256, 480))
                 imags_predict = localisation[0, loc_class_, :, :]
 
-                print(imags_label.shape, imags_predict.shape)
                 # findNN(imags_label, imags_predict, '../out/local_test' + str(i) +'_c' + str(loc_class_) + '.png')
                 all_image_list.append((imags_label, imags_predict))
         plot_threshold_score(all_image_list)
@@ -185,7 +184,7 @@ class CSLNet(nn.Module):
                 loc_images.append(loc_image)
                 label_loc_images.append(label_loc_image)
 
-            plot_overlay_images(ori_img, seg_image, loc_images, label_loc_images, r'../out/' + str(i) + '.png')
+            plot_overlay_images(ori_img, seg_image, loc_images, r'../out/' + str(i) + '.png')
 
     def visualize(self, dataset, device='cpu', batch_size=2):
         loader = train_val_dataset(dataset, validation_split=0, train_batch_size=batch_size,

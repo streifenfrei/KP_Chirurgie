@@ -12,7 +12,6 @@ import torch
 import torch.autograd.profiler as profiler
 from csl.csl_run import _load_model
 
-import numpy as np
 from pyprof2calltree import convert
 import json
 

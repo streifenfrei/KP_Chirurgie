@@ -1,7 +1,6 @@
 import torch
 import torch.nn as nn
 import numpy as np
-from torch.autograd import profiler
 
 
 def conv5x5(in_planes, out_planes, stride=1, groups=1, dilation=1, padding=2):
@@ -28,7 +27,7 @@ class DecoderBlock(nn.Module):
         self.in_channels = in_channels
         self.indices = None
 
-        self.unpooling = nn.MaxUnpool2d(kernel_size=2)
+        self.unpooling = nn.ConvTranspose2d(in_channels, in_channels, kernel_size=2, stride=2)
         self.conv1 = conv5x5(in_channels, out_channels)
         self.relu1 = nn.ReLU(inplace=True)
         self.proj = conv5x5(in_channels, out_channels)
@@ -36,15 +35,7 @@ class DecoderBlock(nn.Module):
         self.relu2 = nn.ReLU(inplace=True)
 
     def forward(self, x):
-        # regenerate indices if batch size changes
-        with profiler.record_function("construct_indices"):
-            if self.indices is None or list(self.indices.shape) != list(x.shape):
-                copy = torch.clone(x).cpu().detach()
-                self.indices = construct_indices(copy)
-                self.indices = self.indices.to(x.device)
-                self.indices.requires_grad = False
-
-        proj = x = self.unpooling(x, self.indices)
+        proj = x = self.unpooling(x)
 
         x = self.conv1(x)
         x = self.relu1(x)

@@ -4,7 +4,7 @@ import scipy.ndimage.filters as filters
 import cv2
 import torch
 from torch import flatten
-
+import matplotlib.pyplot as plt
 from csl.data_loader import image_transform, OurDataLoader, train_val_dataset, landmark_name_to_id_
 
 
