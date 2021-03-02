@@ -116,7 +116,6 @@ class OurDataLoader(Dataset):
             img, both_labels = augmented["image"], augmented["mask"]
 
             if self.non_image_norm_flag:
-                print("I'm normalize the image!")
                 tf = image_norm()
                 img = tf(img)
                 return img, torch.from_numpy(both_labels).float()
@@ -153,8 +152,7 @@ def image_transform_valid(p=1):
 
 def image_norm():
     return transforms_t.Compose([
-        transforms_t.ToTensor(),
-        transforms_t.Normalize((0.485, 0.456, 0.406), (0.229, 0.224, 0.225))
+        transforms_t.ToTensor()
     ])
 
 

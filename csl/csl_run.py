@@ -73,9 +73,9 @@ def call_model(workspace, dataset):
         del checkpoint
         torch.cuda.empty_cache()
 
-    #model.visualize(dataset, device, batch_size=1)
-    model.show_loc_result(dataset, device, batch_size=1)
-    model.show_all_result(dataset, device, batch_size=1)
+    model.visualize(dataset, device, batch_size=1)
+    #model.show_loc_result(dataset, device, batch_size=1)
+    #model.show_all_result(dataset, device, batch_size=1)
 
 
 if __name__ == '__main__':
