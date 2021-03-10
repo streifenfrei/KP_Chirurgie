@@ -79,6 +79,9 @@ class CSLNet(nn.Module):
         self.dropout_de3 = nn.Dropout(p=_dropout)
         self.dropout_de4 = nn.Dropout(p=_dropout)
 
+        self.segmentation_upscale = nn.Upsample(scale_factor=2, mode='bilinear', align_corners=False)
+        self.localisation_upscale = nn.Upsample(scale_factor=2, mode='bilinear', align_corners=False)
+
     def _make_bottleneck_block(self, planes, downsample=False, stride=1):
         return Bottleneck(self.inplanes, planes,
                           downsample=downsample,
@@ -276,6 +279,9 @@ class CSLNet(nn.Module):
         x = self.pre_localisation_layer(x)
         x = torch.cat((segmentation, x), 1)
         localisation = self.localisation_layer(x)
+
+        segmentation = self.segmentation_upscale(segmentation)
+        localisation = self.localisation_upscale(localisation)
         return segmentation, localisation
 
 
@@ -343,9 +349,6 @@ class Training:
         def __call__(self, output, target):
             output_segmentation, output_localisation = output
             target_segmentation, target_localisation = target
-            upsample = nn.Upsample(scale_factor=2, mode='bilinear', align_corners=False)
-            output_segmentation = upsample(output_segmentation)
-            output_localisation = upsample(output_localisation)
             batch_size, localisation_classes, height, width = output_localisation.shape
             # segmentation
             if self.segmentation_loss == self.SegmentationLoss.cross_entropy:
