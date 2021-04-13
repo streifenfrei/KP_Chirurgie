@@ -52,6 +52,7 @@ def find_nn(image_label, image_predicted, save_name):
         nn_id = np.argsort(np.array([np.linalg.norm(i - x) for x in xy_predict]))[0]
 
         if np.linalg.norm(i - xy_predict[nn_id]) > 50:
+            fn += 1
             continue
 
         pair_list.append([i, xy_predict[nn_id]])
