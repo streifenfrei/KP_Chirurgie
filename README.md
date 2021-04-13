@@ -1,11 +1,11 @@
-# Komplexpraktikum __*Computer- und robotergestützte Chirurgie*__ 2020
-This repository contains our 3 networks we worked with: 
-- The __CSLNet__ according to [Laina et al.](https://arxiv.org/abs/1703.10701)
-- A __MaskRCNN__  network using the [Detectron2](https://github.com/facebookresearch/detectron2) framework
-- A __Combined__ network using the [Detectron2](https://github.com/facebookresearch/detectron2) framework which combines
-the MaskRCNN network and the CSLNet by implementing a custom CSL head
+# Forschungspraktikum __*Embedded Hardware Systems Design*__ 2021
+This repository contains the __CSLNet__ according to [Laina et al.](https://arxiv.org/abs/1703.10701) in a modified version 
+so it can fit on the Ultra96-V2 accelerator board. Furthermore, it contains scripts for transferring the trained model to 
+an appropriate accelerator board using the [Vitis AI workflow](https://www.xilinx.com/products/design-tools/vitis/vitis-ai.html).
 
-## CSL
+
+
+## The CSL network
 Run the CSL network with `python csl/run.py --argument2 --argument2  ...`. The `--command` argument has to be
  `init, train` or `call` and is always required.
 #### init
@@ -26,16 +26,3 @@ Starts training the CSL model. Possible arguments are:
 #### call
 Does inference on a trained model. Specify the dataset with `--dataset` and the directory containing the .pth file with
 `--workspace`
-## MaskRCNN
-Before you can use the MaskRCNN network you have to register the dataset properly. The dataset directory has to contain
-the images in .png format and their corresponding annotations in .json files. To register it, run: 
-`python detectron2_commons/register_dataset.py --dataset [path/to/dataset/] --output [output/directory]`. This generates 
-.json file describing the dataset.
-
-Now you can run the network with `python maskrcnn/detectron_run.py --config [path/to/config] --dataset[path/to/dataset]
- [--train]`. The config file is a .yaml file according to the Detectron2 standard (like in maskrcnn/configs). The 
- dataset directory has to contain the previously generated .json file. The `--train` specifies whether to train or not.
- 
- ## Combined
- Just as with the MaskRCNN network you have to register the dataset with the register_dataset.py script. Then start
- the network with `python combined/combined_run.py ...`. The arguments are identical to the MaskRCNN network.
